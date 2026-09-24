@@ -1,0 +1,422 @@
+================================================================================
+PROYECTO: CAVI - SISTEMA WEB PARA CONTROL DE PRÉSTAMOS
+ESTRUCTURA DE TICKETS DE DESARROLLO (PRODUCT BACKLOG)
+================================================================================
+
+--------------------------------------------------------------------------------
+SPRINT 0: INFRAESTRUCTURA BASE, MODELO CONCEPTUAL Y PADRÓN DE CLIENTES
+--------------------------------------------------------------------------------
+
+[CAVI-TK01] Configuración del entorno base del Backend y conexión a PostgreSQL
+Tipo: Tarea Técnica (Backend)
+Requisito: NFR-03, NFR-09
+Estimación: 4h
+Descripción:
+- Inicializar el repositorio del backend con el framework seleccionado.
+- Configurar la conexión a la base de datos PostgreSQL local y remota.
+- Establecer el soporte estricto de tipos de datos monetarios NUMERIC(14, 2).
+Criterios de Aceptación:
+- Conexión exitosa verificada contra el motor PostgreSQL.
+- Variables de entorno (.env) debidamente configuradas y protegidas.
+
+[CAVI-TK02] Modelado Conceptual Global y Configuración de Migraciones
+Tipo: Tarea Técnica (Base de Datos)
+Requisito: Mantenibilidad
+Estimación: 3h
+Descripción:
+- Elaborar el Diagrama Entidad-Relación (DER) conceptual completo del sistema.
+- Configurar el sistema de migraciones automáticas en el backend.
+- Ejecutar la migración inicial de control de esquema.
+Criterios de Aceptación:
+- DER exportado como referencia arquitectónica para el equipo.
+- Pipeline de migraciones ejecutándose sin errores de sincronización.
+
+[CAVI-TK03] Implementación de Autenticación JWT y Roles de Acceso (RBAC)
+Tipo: Funcionalidad (Backend)
+Requisito: NFR-01, CU-01 a CU-04
+Estimación: 6h
+Descripción:
+- Crear el modelo de datos de Usuarios con roles 'ADMINISTRADOR' y 'COBRANZA'.
+- Implementar endpoints de inicio de sesión (/login) con generación de tokens JWT.
+- Crear middlewares o dependencias de autorización para proteger endpoints por rol.
+Criterios de Aceptación:
+- Las contraseñas se almacenan con hash seguro (bcrypt/argon2).
+- Solo peticiones con token válido y rol adecuado pueden acceder a rutas protegidas.
+
+[CAVI-TK04] API REST para Gestión de Expedientes de Clientes (CRUD)
+Tipo: Funcionalidad (Backend)
+Requisito: FR-04, FR-05, CU-02
+Estimación: 5h
+Descripción:
+- Crear el modelo y migración para la tabla 'clientes' (cédula, nombres, teléfono, dirección, actividad).
+- Implementar endpoints para registrar, consultar, actualizar y deshabilitar clientes.
+- Agregar validación para impedir duplicidad de números de cédula.
+Criterios de Aceptación:
+- El intento de guardar una cédula ya existente retorna código HTTP 400/422.
+- Respuestas en formato JSON estructurado con paginación básica.
+
+[CAVI-TK05] Inicialización y Configuración del Entorno Frontend
+Tipo: Tarea Técnica (Frontend)
+Requisito: NFR-05, CR-01
+Estimación: 3h
+Descripción:
+- Crear el proyecto cliente utilizando Preact + Vite + Tailwind CSS.
+- Configurar el cliente HTTP (fetch o axios) con interceptores para inyección de JWT.
+- Configurar enrutador web para navegación entre módulos.
+Criterios de Aceptación:
+- Compilación inicial funcional con recarga rápida (HMR).
+- Bundle base optimizado con peso inferior a 200 KB.
+
+[CAVI-TK06] Interfaz de Autenticación y Manejo de Sesión
+Tipo: Funcionalidad (Frontend)
+Requisito: NFR-01, UR-01
+Estimación: 4h
+Descripción:
+- Diseñar la vista de Login adaptable a pantallas móviles y de escritorio.
+- Almacenar el token JWT en el cliente de forma segura.
+- Redireccionar al usuario según su rol de acceso tras autenticarse.
+Criterios de Aceptación:
+- Manejo visual de errores ante credenciales incorrectas.
+- Cierre de sesión funcional con revocación del token en el cliente.
+
+[CAVI-TK07] Pantalla Responsiva de Registro y Consulta de Clientes
+Tipo: Funcionalidad (Frontend)
+Requisito: FR-04, NFR-05
+Estimación: 5h
+Descripción:
+- Diseñar formulario móvil/escritorio para ingresar nuevos prestatarios.
+- Crear tabla o listado de clientes con barra de búsqueda rápida por nombre o cédula.
+- Conectar la interfaz con los endpoints creados en CAVI-TK04.
+Criterios de Aceptación:
+- Registro exitoso de clientes reflejado de inmediato en la tabla.
+- Validación de campos requeridos en la interfaz antes de enviar la petición.
+
+--------------------------------------------------------------------------------
+SPRINT 1: GESTIÓN DE FONDOS FAMILIARES Y DESEMBOLSO MULTIFONDO
+--------------------------------------------------------------------------------
+
+[CAVI-TK08] Modelo Relacional e Historial de Movimientos de Fondos
+Tipo: Funcionalidad (Backend)
+Requisito: FR-01, FR-03, BR-01, CU-01
+Estimación: 5h
+Descripción:
+- Crear modelos y migraciones para 'fondos' y 'movimientos_fondo'.
+- Establecer restricción de comprobación CHECK para asegurar saldo_disponible >= 0.
+- Registrar tipo de movimiento (inyección, retiro, desembolso, ganancia) y saldos anterior/posterior.
+Criterios de Aceptación:
+- Toda alteración de saldo crea un registro inmutable en movimientos_fondo.
+- La base de datos rechaza cualquier operación que intente dejar el saldo en negativo.
+
+[CAVI-TK09] Endpoints de Depósitos, Inyecciones y Retiros de Capital
+Tipo: Funcionalidad (Backend)
+Requisito: FR-02, CU-01
+Estimación: 4h
+Descripción:
+- Implementar endpoint para crear nuevas bolsas de fondeo por familiar.
+- Crear endpoints para registrar inyecciones adicionales y retiros de liquidez.
+- Validar que los retiros no excedan la liquidez disponible en caja del fondo.
+Criterios de Aceptación:
+- Peticiones de retiro superiores al saldo retornan error con saldo máximo retirable.
+- El saldo actual del fondo se actualiza de manera coherente.
+
+[CAVI-TK10] Lógica de Cálculo de Proporción de Participación (Pi)
+Tipo: Lógica de Negocio (Backend)
+Requisito: FR-06, BR-02
+Estimación: 4h
+Descripción:
+- Implementar función matemática que reciba los aportes de múltiples bolsas familiares.
+- Validar que la sumatoria de aportes iguale con precisión el 100% del monto solicitado.
+- Calcular la cuota porcentual Pi con precisión de cuatro decimales (ej. 0.3333).
+Criterios de Aceptación:
+- Retorna error si la suma de montos aportados no cuadra con el monto principal.
+- Tolerancia cero a descuadres por redondeo de coma flotante.
+
+[CAVI-TK11] Transacción Atómica ACID para Desembolso Multifondo
+Tipo: Funcionalidad Crítica (Backend)
+Requisito: FR-07, NFR-04, CU-03
+Estimación: 6h
+Descripción:
+- Crear modelos 'prestamos' y 'prestamo_fondos_detalle'.
+- Implementar endpoint transaccional para originar un crédito.
+- Debitar simultáneamente los montos asignados de cada bolsa de inversión involucrada.
+Criterios de Aceptación:
+- Si un fondo participante no tiene saldo suficiente, toda la operación se revierte (ROLLBACK).
+- Se genera el registro del préstamo en estado 'VIGENTE' con su fecha de corte inicial.
+
+[CAVI-TK12] Módulo Visual de Administración de Fondos Familiares
+Tipo: Funcionalidad (Frontend)
+Requisito: UR-01, CU-01
+Estimación: 5h
+Descripción:
+- Construir vista de tarjetas/resumen con balance disponible, capital colocado y ganancias por familiar.
+- Diseñar modal para inyección y retiro rápido de efectivo por bolsa.
+- Integrar vista con los endpoints de fondos del backend.
+Criterios de Aceptación:
+- El administrador visualiza en tiempo real los saldos consolidados de capital.
+- Bloqueo visual de retiros que excedan el saldo actual de la tarjeta seleccionada.
+
+[CAVI-TK13] Formulario de Creación de Préstamos con Selector Multifondo
+Tipo: Funcionalidad (Frontend)
+Requisito: FR-06, UR-01, CU-03
+Estimación: 6h
+Descripción:
+- Crear formulario de originación: cliente, monto, plazo, periodicidad y tasa de interés.
+- Agregar componente dinámico para seleccionar uno o varios fondos aportantes.
+- Mostrar cálculo automático en vivo del faltante o excedente para completar el monto.
+Criterios de Aceptación:
+- El botón de confirmación permanece inactivo si los aportes no igualan el total.
+- Al confirmar, muestra alerta de confirmación con el resumen de débitos por fondo.
+
+[CAVI-TK14] Pruebas Unitarias Automatizadas de Fondos y Desembolsos
+Tipo: Calidad / QA
+Requisito: TC-FND-002, TC-LON-002
+Estimación: 4h
+Descripción:
+- Escribir pruebas con pytest para simular retiros por encima del saldo disponible.
+- Validar casos extremos de desembolsos cofinanciados con hasta 4 fondos distintos.
+- Validar reversión total ante excepciones a mitad de transacción.
+Criterios de Aceptación:
+- 100% de pruebas financieras aprobadas sin fugas de saldo en base de datos.
+
+--------------------------------------------------------------------------------
+SPRINT 2: MOTOR DE AMORTIZACIÓN, COBRANZA Y LIQUIDACIÓN 50/50
+--------------------------------------------------------------------------------
+
+[CAVI-TK15] Motor de Amortización con Interés sobre Saldo Restante (Ley 176)
+Tipo: Lógica de Negocio (Backend)
+Requisito: FR-08, BR-03
+Estimación: 6h
+Descripción:
+- Implementar servicio de cálculo de cuotas aplicando interés exclusivamente al saldo insoluto.
+- Prohibir estrictamente el anatocismo (cobro de intereses sobre intereses vencidos).
+- Generar proyecciones de amortización detallando desglose mensual/quincenal.
+Criterios de Aceptación:
+- Las tablas de amortización calculan exactamente el interés pactado sobre el remanente.
+- El saldo deudor disminuye de forma proporcional con cada amortización aplicada.
+
+[CAVI-TK16] Algoritmo de Imputación de Pagos y Prelación de Cobro
+Tipo: Lógica de Negocio (Backend)
+Requisito: FR-09, CU-04
+Estimación: 5h
+Descripción:
+- Crear lógica de procesamiento de pagos con la regla de prelación: mora -> interés corriente -> capital.
+- Bloquear registros de cobro con importe inferior a la cuota mínima de interés del ciclo.
+- Truncar abonos si el monto ingresado supera la deuda total de liquidación.
+Criterios de Aceptación:
+- Asignación matemática correcta del abono entre intereses devengados y amortización a capital.
+- El crédito pasa automáticamente a estado 'CANCELADO' si el saldo insoluto llega a cero.
+
+[CAVI-TK17] Transacción de Liquidación 50/50 y Prorrateo a Bolsas Familiares
+Tipo: Funcionalidad Crítica (Backend)
+Requisito: FR-10, BR-02, CU-04
+Estimación: 6h
+Descripción:
+- Crear modelos 'pagos' y 'pago_distribucion_fondos'.
+- Implementar la división: 50% del interés a la administración y 50% a los fondos participantes.
+- Distribuir el 50% de los inversionistas multiplicando por el porcentaje Pi de cada uno.
+- Reintegrar el abono a capital al balance disponible del fondo correspondiente.
+Criterios de Aceptación:
+- Transacción atómica que actualiza balances de fondos y deuda del cliente.
+- La sumatoria de utilidades distribuidas coincide de forma exacta con el interés cobrado.
+
+[CAVI-TK18] Pantalla Móvil de Asentamiento Rápido de Cobros
+Tipo: Funcionalidad (Frontend)
+Requisito: UR-03, NFR-05
+Estimación: 6h
+Descripción:
+- Diseñar interfaz simplificada a una sola mano para registro de pagos desde el teléfono.
+- Campos: selector de préstamo, monto recibido, método (Efectivo/Transferencia) y referencia bancaria.
+- Validación inmediata en pantalla para verificar que el monto cubra el interés mínimo.
+Criterios de Aceptación:
+- Flujo de cobro completable en menos de cuatro toques de pantalla.
+- Mensajes visuales de éxito o advertencia contextualmente claros.
+
+[CAVI-TK19] Componente de Recibo Digital de Pago
+Tipo: Funcionalidad (Frontend)
+Requisito: UR-03, CU-04
+Estimación: 4h
+Descripción:
+- Crear modal/vista de confirmación con el comprobante digital tras procesar un pago.
+- Desglosar claramente: monto pagado, abono a capital, interés, mora y nuevo saldo pendiente.
+- Habilitar botón para compartir o visualizar el detalle de la transacción.
+Criterios de Aceptación:
+- Generación inmediata de recibo con código único de transacción.
+- Datos coincidentes con la auditoría de pagos del backend.
+
+[CAVI-TK20] Pruebas de Integración de Pagos y Consistencia Decimal
+Tipo: Calidad / QA
+Requisito: TC-BIL-001, TC-BIL-002
+Estimación: 5h
+Descripción:
+- Simular cobros parciales sucesivos en préstamos cofinanciados con aportes dispares.
+- Verificar consistencia contable: que no se pierdan centavos en los balances tras 100 pagos consecutivos.
+- Verificar reversión de transacciones ante fallos simulados durante el asentamiento.
+Criterios de Aceptación:
+- Conciliación de caja cuadrada al centavo en todas las pruebas de carga sintética.
+
+--------------------------------------------------------------------------------
+SPRINT 3: CONTROL DE MORA, DOCUMENTACIÓN LEGAL (PDF) Y EMPAQUETADO MÓVIL
+--------------------------------------------------------------------------------
+
+[CAVI-TK21] Motor de Evaluación de Tolerancia y Estados de Cartera
+Tipo: Lógica de Negocio (Backend)
+Requisito: FR-11, UR-02, CU-04
+Estimación: 4h
+Descripción:
+- Implementar rutina para evaluar préstamos activos frente a su fecha de próximo corte.
+- Aplicar la política de 4 días de gracia: transición a 'EN_GRACIA' durante ese período.
+- Cambiar automáticamente el estado a 'EN_MORA' a partir del quinto día sin pago registrado.
+Criterios de Aceptación:
+- Los estados cambian con exactitud en base a la fecha del sistema sin intervención manual.
+- Las consultas de cartera reflejan de inmediato el estado moratorio real.
+
+[CAVI-TK22] Configuración del Servicio de Generación de Documentos PDF/A
+Tipo: Tarea Técnica (Backend)
+Requisito: FR-12, NFR-07
+Estimación: 5h
+Descripción:
+- Integrar la librería de renderizado documental (WeasyPrint u homóloga).
+- Configurar motor de plantillas HTML para inyección dinámica de variables legales.
+- Asegurar exportación conforme al estándar PDF/A para preservación digital e impresión.
+Criterios de Aceptación:
+- Generación de documentos binarios en menos de 1.5 segundos por solicitud.
+- Documento resultante visualizable e imprimible sin dependencias externas.
+
+[CAVI-TK23] Diseño de Plantilla del Pagaré a la Orden y Contrato de Deuda
+Tipo: Funcionalidad (Backend / Legal)
+Requisito: FR-13, CU-03
+Estimación: 6h
+Descripción:
+- Diseñar la plantilla formal del pagaré conforme a la Ley 176 y Código de Comercio.
+- Inyectar datos obligatorios: nombres, cédula, dirección, monto en números y letras, tasa y plan de cuotas.
+- Incluir cláusulas mercantiles de mérito ejecutivo y espacios para firmas físicas.
+Criterios de Aceptación:
+- Conversión precisa de montos monetarios a texto en español nicaragüense.
+- Estructura tipográfica nítida y apta para impresión física formal.
+
+[CAVI-TK24] Panel de Control (Dashboard) con Semaforización de Cobranzas
+Tipo: Funcionalidad (Frontend)
+Requisito: UR-02, CU-04
+Estimación: 5h
+Descripción:
+- Construir panel principal con indicadores: cobros vencidos hoy, clientes en gracia y cartera en mora.
+- Incorporar código de colores (verde: al día; amarillo: en gracia; rojo: en mora).
+- Agregar accesos directos desde la lista hacia el formulario de cobro rápido.
+Criterios de Aceptación:
+- Alertas visibles de forma inmediata al iniciar sesión en la aplicación.
+- Actualización fluida de listas sin recargar la página completa.
+
+[CAVI-TK25] Flujo de Descarga e Impresión de Documentación Legal
+Tipo: Funcionalidad (Frontend)
+Requisito: UR-04, FR-12
+Estimación: 3h
+Descripción:
+- Añadir botón de descarga directa de pagaré al formalizar un préstamo o consultar un expediente.
+- Integrar visualizador de PDF incrustado para laptops y descarga directa en móviles.
+Criterios de Aceptación:
+- El documento se abre correctamente en navegadores y lectores nativos de PDF.
+
+[CAVI-TK26] Integración de Capacitor y Generación del Instalador Android (.apk)
+Tipo: Tarea Técnica (Móvil)
+Requisito: NFR-05
+Estimación: 4h
+Descripción:
+- Inicializar y configurar Capacitor en el proyecto frontend de Preact.
+- Configurar permisos básicos (red y almacenamiento para descargas de PDF) en el manifest de Android.
+- Sincronizar el directorio web compilado ('dist') y generar el paquete instalable .apk en Android Studio.
+Criterios de Aceptación:
+- Aplicación instalada y ejecutándose de forma fluida en el dispositivo móvil de prueba.
+- Comportamiento responsivo idéntico al del navegador móvil sin desbordamientos visuales.
+
+--------------------------------------------------------------------------------
+SPRINT 4: PRUEBAS TÉCNICAS, DESPLIEGUE Y VALIDACIÓN CUALITATIVA DE CAMPO
+--------------------------------------------------------------------------------
+
+[CAVI-TK27] Pruebas de Rendimiento y Optimización de Consultas
+Tipo: Calidad / QA
+Requisito: NFR-08
+Estimación: 4h
+Descripción:
+- Medir tiempos de respuesta en endpoints críticos bajo condiciones de red móvil (3G/4G).
+- Verificar que las consultas de balance e historial respondan en menos de 2 segundos.
+- Crear índices adicionales en base de datos de ser necesario.
+Criterios de Aceptación:
+- Tiempos de carga y respuesta validados por debajo del umbral de los 2 segundos.
+
+[CAVI-TK28] Pruebas de Resiliencia ante Cortes de Conectividad y Fallos
+Tipo: Calidad / QA
+Requisito: NFR-04, TC-REL-002
+Estimación: 4h
+Descripción:
+- Simular desconexiones forzadas durante el procesamiento de pagos y desembolsos.
+- Verificar que no queden registros huérfanos ni inconsistencias de saldo en la base de datos.
+- Probar el comportamiento de la interfaz ante pérdidas momentáneas de conexión.
+Criterios de Aceptación:
+- Las transacciones interrumpidas ejecutan rollback completo garantizando integridad ACID.
+- La interfaz muestra mensajes de error claros al usuario sin colapsar.
+
+[CAVI-TK29] Despliegue en Entorno de Nube con Certificado SSL/TLS
+Tipo: DevOps / Infraestructura
+Requisito: NFR-02
+Estimación: 5h
+Descripción:
+- Configurar servidor en la nube con contenedorización o servicios administrados.
+- Desplegar la base de datos PostgreSQL y ejecutar migraciones de producción.
+- Configurar dominio y certificados HTTPS (TLS) obligatorios para tráfico cifrado.
+Criterios de Aceptación:
+- Acceso seguro mediante protocolo HTTPS en producción.
+- API y base de datos operativas con disponibilidad continua.
+
+[CAVI-TK30] Inmersión Operativa y Registro en Diario de Campo
+Tipo: Metodología / Validación
+Requisito: Inmersión en Contexto (Sampieri)
+Estimación: 8h
+Descripción:
+- Desplegar el sistema con los datos reales del negocio 'Capital Villareyna' (CAVI).
+- Acompañar al encargado durante jornadas reales de conciliación de transferencias y cobros.
+- Registrar incidencias, tiempos operativos y dificultades de adaptación en la bitácora de campo.
+Criterios de Aceptación:
+- Diario de campo completado con anotaciones empíricas para el informe de investigación.
+
+[CAVI-TK31] Aplicación de Entrevistas Cualitativas y Evaluación de Aceptación
+Tipo: Metodología / Validación
+Requisito: Enfoque Mixto
+Estimación: 6h
+Descripción:
+- Diseñar y aplicar la guía de entrevista semiestructurada al administrador/operador.
+- Recopilar percepciones sobre la reducción del estrés contable, la claridad del 50/50 y la utilidad de los pagarés.
+- Consolidar los resultados cualitativos para contrastarlos con los objetivos de la monografía.
+Criterios de Aceptación:
+- Respuestas transcritas y categorizadas listas para el capítulo de resultados del informe final.
+================================================================================
+base de datos para el spring 0
+================================================================================
+-- 1. Tipo enumerado para roles de usuario (RBAC)
+CREATE TYPE rol_usuario AS ENUM ('ADMINISTRADOR', 'COBRANZA');
+
+-- 2. Tabla de Usuarios (CAVI-TK03 / NFR-01)
+CREATE TABLE usuarios (
+    id SERIAL PRIMARY KEY,
+    nombre_completo VARCHAR(120) NOT NULL,
+    correo VARCHAR(120) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    rol rol_usuario NOT NULL DEFAULT 'COBRANZA',
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Tabla de Clientes (CAVI-TK04 / FR-04, FR-05)
+CREATE TABLE clientes (
+    id SERIAL PRIMARY KEY,
+    cedula VARCHAR(20) UNIQUE NOT NULL, -- Formato cédula nicaragüense
+    nombres VARCHAR(100) NOT NULL,
+    apellidos VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    direccion TEXT NOT NULL,
+    actividad_economica VARCHAR(120),
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Índice para optimizar búsquedas por cédula
+CREATE INDEX idx_clientes_cedula ON clientes(cedula);
