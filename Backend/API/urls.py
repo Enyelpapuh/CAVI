@@ -5,11 +5,15 @@ from .views import (
     CustomTokenRefreshView,
     UsuarioViewSet,
     ClienteViewSet,
+    FondoViewSet,
+    PrestamoViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'usuarios', UsuarioViewSet, basename='usuario')
 router.register(r'clientes', ClienteViewSet, basename='cliente')
+router.register(r'fondos', FondoViewSet, basename='fondo')
+router.register(r'prestamos', PrestamoViewSet, basename='prestamo')
 
 urlpatterns = [
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),

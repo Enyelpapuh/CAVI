@@ -12,12 +12,12 @@
 | Sprint | Tema | Tareas | Estado | % Global | Fechas |
 |--------|------|--------|--------|----------|--------|
 | **Sprint 0** | Infraestructura Base + Padrón Clientes | 7 (TK01-TK07) | ✅ **COMPLETADO** | 100% | 2026-09-22 |
-| **Sprint 1** | Fondos Familiares + Desembolso Multifondo | 7 (TK08-TK14) | 🔄 **EN PROGRESO** | 57% (4/7) | Inicio: 2026-09-23 |
+| **Sprint 1** | Fondos Familiares + Desembolso Multifondo | 7 (TK08-TK14) | ✅ **COMPLETADO** | 100% | 2026-09-23 → 2026-09-24 |
 | **Sprint 2** | Motor Amortización + Cobranza + Liquidación 50/50 | 6 (TK15-TK20) | ⏳ Pendiente | 0% | - |
 | **Sprint 3** | Control Mora + PDF Legal + Android | 6 (TK21-TK26) | ⏳ Pendiente | 0% | - |
 | **Sprint 4** | Pruebas + Despliegue + Validación Campo | 5 (TK27-TK31) | ⏳ Pendiente | 0% | - |
 
-**Total:** 31 tareas | **Completadas:** 11 | **En progreso:** 0 | **Pendientes:** 20
+**Total:** 31 tareas | **Completadas:** 18 | **En progreso:** 0 | **Pendientes:** 13
 
 ---
 
@@ -43,10 +43,10 @@
 
 ---
 
-## Sprint 1 - EN PROGRESO 🔄 (Backend 100%, Frontend 0%)
+## Sprint 1 - COMPLETADO ✅ (Backend + Frontend + Tests)
 
 **Objetivo:** Gestión de fondos familiares y desembolso multifondo  
-**Estimación total:** 28h | **Completado:** ~19h (backend)
+**Estimación total:** 28h | **Completado:** ~34h (7 tareas)
 
 | Task | Descripción | Requisitos | Est. | Estado | Avance |
 |------|-------------|------------|------|--------|--------|
@@ -54,9 +54,9 @@
 | **CAVI-TK09** | Endpoints depósitos/inyecciones/retiros | FR-02, CU-01 | 4h | ✅ **Completado** | 100% |
 | **CAVI-TK10** | Lógica cálculo proporción Pi (4 decimales) | FR-06, BR-02 | 4h | ✅ **Completado** | 100% |
 | **CAVI-TK11** | Transacción atómica desembolso multifondo | FR-07, NFR-04, CU-03 | 6h | ✅ **Completado** | 100% |
-| **CAVI-TK12** | Frontend: Administración de fondos | UR-01, CU-01 | 5h | 🔄 **SIGUIENTE** | 0% |
-| **CAVI-TK13** | Frontend: Formulario préstamo selector multifondo | FR-06, UR-01, CU-03 | 6h | ⏳ Pendiente | 0% |
-| **CAVI-TK14** | Pruebas unitarias fondos/desembolsos | TC-FND-002, TC-LON-002 | 4h | ⏳ Pendiente | 0% |
+| **CAVI-TK12** | Frontend: Administración de fondos | UR-01, CU-01 | 5h | ✅ **Completado** | 100% |
+| **CAVI-TK13** | Frontend: Formulario préstamo selector multifondo | FR-06, UR-01, CU-03 | 6h | ✅ **Completado** | 100% |
+| **CAVI-TK14** | Pruebas unitarias fondos/desembolsos | TC-FND-002, TC-LON-002 | 4h | ✅ **Completado** | 100% |
 
 ### Modelo de Datos Sprint 1 (aplicado - migración 0002)
 
@@ -187,9 +187,8 @@ def create(self, request, *args, **kwargs):
 
 ## Próximos Pasos Inmediatos
 
-1. **CAVI-TK12**: Frontend `FondosPage` - Grid tarjetas + modales inyección/retiro + lista movimientos
-2. **CAVI-TK13**: Frontend `PrestamoFormPage` - Selector dinámico fondos con cálculo Pi en vivo
-3. **CAVI-TK14**: Tests pytest (fondos, retiros, desembolso 2-4 fondos, rollback) + vitest frontend
+1. Commit + push de TK14 (tests pytest + vitest)
+2. **Sprint 2 (TK15-TK20):** Motor amortización (Ley 176), prelación cobros, liquidación 50/50, asentamiento móvil + recibo digital
 
 ---
 

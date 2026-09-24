@@ -424,6 +424,7 @@ export function PrestamoFormPage() {
                               <td class="px-6 py-3">
                                 <input
                                   type="checkbox"
+                                  aria-label={`Usar fondo ${fondo.nombre}`}
                                   checked={activo}
                                   onChange={() => toggleFondo(fondo.id)}
                                   class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
@@ -439,6 +440,7 @@ export function PrestamoFormPage() {
                                   type="number"
                                   step="0.01"
                                   min="0"
+                                  aria-label={`Monto aportado ${fondo.nombre}`}
                                   disabled={!activo}
                                   value={activo ? aporte.monto_aportado : ''}
                                   onInput={(e) => handleMontoAportado(fondo.id, e.currentTarget.value)}
@@ -454,6 +456,7 @@ export function PrestamoFormPage() {
                                   step="0.0001"
                                   min="0"
                                   max="1"
+                                  aria-label={`% Pi ${fondo.nombre}`}
                                   disabled={!activo}
                                   value={activo ? aporte.porcentaje_pi : ''}
                                   onInput={(e) => handlePiChange(fondo.id, e.currentTarget.value)}

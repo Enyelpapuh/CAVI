@@ -17,7 +17,7 @@
 | CAVI-TK11 | Transacción atómica ACID desembolso multifondo | 6h | ✅ Completado | 100% | @transaction.atomic en create(). Debita simultáneamente fondos, crea PrestamoFondoDetalle + MovimientoFondo DESEMBOLSO. Rollback si fondo insuficiente. | 2026-09-23 | - |
 | CAVI-TK12 | Frontend: Administración de fondos (tarjetas + modales) | 5h | ✅ Completado | 100% | FondosPage: grid tarjetas con saldo/capital/ganancias/rentabilidad, modales crear/inyección/retiro, historial movimientos paginado. Ruta /fondos. | 2026-09-24 | - |
 | CAVI-TK13 | Frontend: Formulario préstamo selector multifondo | 6h | ✅ Completado | 100% | PrestamoFormPage: selector cliente con búsqueda, tabla multifondo con monto/Pi por fondo, distribución automática (divide monto, calcula Pi), cálculos en vivo (total, Σ Pi, faltante/excedente), botón deshabilitado si validaciones fallan, modal confirmación con débitos por fondo. Ruta /prestamos/nuevo. | 2026-09-24 | - |
-| CAVI-TK14 | Pruebas unitarias fondos/desembolsos (pytest + vitest) | 4h | 🔄 Pendiente | 0% | - | - | - |
+| CAVI-TK14 | Pruebas unitarias fondos/desembolsos (pytest + vitest) | 4h | ✅ Completado | 100% | 23 tests pytest (fondos, inyección/retiro, multifondo 2-4 fondos, validaciones Pi/montos/saldo, rollback). 10 tests vitest (FondosPage, PrestamoFormPage). pytest.ini + vitest configurados. | 2026-09-24 | - |
 
 ---
 
@@ -137,9 +137,10 @@ curl -X POST http://localhost:8000/api/prestamos/ \
 
 ---
 
-## Próximos Pasos (TK14)
+## Próximos Pasos
 
-1. **TK14 - Tests:**
+1. **Sprint 2 (TK15-TK20):** Motor amortización (Ley 176), prelación cobros, liquidación 50/50, asentamiento móvil.
+2. Commit + push pendientes del paquete de tests (TK14).
 
 ---
 
