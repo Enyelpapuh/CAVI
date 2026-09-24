@@ -16,7 +16,7 @@
 | CAVI-TK10 | Lógica cálculo proporción Pi (4 decimales, suma=1.0000) | 4h | ✅ Completado | 100% | Validación en PrestamoCreateSerializer: suma montos = principal, suma Pi = 1.0000 ± 0.0001. Decimal precision. | 2026-09-23 | - |
 | CAVI-TK11 | Transacción atómica ACID desembolso multifondo | 6h | ✅ Completado | 100% | @transaction.atomic en create(). Debita simultáneamente fondos, crea PrestamoFondoDetalle + MovimientoFondo DESEMBOLSO. Rollback si fondo insuficiente. | 2026-09-23 | - |
 | CAVI-TK12 | Frontend: Administración de fondos (tarjetas + modales) | 5h | ✅ Completado | 100% | FondosPage: grid tarjetas con saldo/capital/ganancias/rentabilidad, modales crear/inyección/retiro, historial movimientos paginado. Ruta /fondos. | 2026-09-24 | - |
-| CAVI-TK13 | Frontend: Formulario préstamo selector multifondo | 6h | 🔄 Pendiente | 0% | - | - | - |
+| CAVI-TK13 | Frontend: Formulario préstamo selector multifondo | 6h | ✅ Completado | 100% | PrestamoFormPage: selector cliente con búsqueda, tabla multifondo con monto/Pi por fondo, distribución automática (divide monto, calcula Pi), cálculos en vivo (total, Σ Pi, faltante/excedente), botón deshabilitado si validaciones fallan, modal confirmación con débitos por fondo. Ruta /prestamos/nuevo. | 2026-09-24 | - |
 | CAVI-TK14 | Pruebas unitarias fondos/desembolsos (pytest + vitest) | 4h | 🔄 Pendiente | 0% | - | - | - |
 
 ---
@@ -137,17 +137,9 @@ curl -X POST http://localhost:8000/api/prestamos/ \
 
 ---
 
-## Próximos Pasos (TK13-TK14)
+## Próximos Pasos (TK14)
 
-1. **TK13 - PrestamoFormPage Frontend:**
-   - Formulario: cliente (select), monto, plazo, periodicidad, tasa, fechas
-   - Selector dinámico fondos: lista fondos con saldo_disponible > 0
-   - Input monto_aportado + porcentaje_pi por fondo
-   - Cálculo en vivo: total_aportado, suma_pi, faltante/excedente
-   - Botón "Crear Préstamo" disabled hasta que validaciones pasen
-   - Modal confirmación con resumen débitos por fondo
-
-2. **TK14 - Tests:**
+1. **TK14 - Tests:**
 
 ---
 

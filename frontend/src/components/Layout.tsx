@@ -26,6 +26,13 @@ export function Layout({ children }: LayoutProps) {
                   >
                     Clientes
                   </Link>
+                  <Link
+                    path="/prestamos/nuevo"
+                    activeClassName="text-blue-600 font-medium"
+                    class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Nuevo Préstamo
+                  </Link>
                   {hasRole('ADMINISTRADOR') && (
                     <Link
                       path="/fondos"
