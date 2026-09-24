@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import type { AuthTokens, ApiError, LoginCredentials, Cliente } from '../types';
+import type { AuthTokens, ApiError, LoginCredentials, Cliente, Fondo, Prestamo } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -136,6 +136,66 @@ export const clienteService = {
 
   delete: async (id: number): Promise<void> => {
     await api.delete(`/clientes/${id}/`);
+  },
+};
+
+// Fondo endpoints
+export const fondoService = {
+  list: async (params?: { search?: string; page?: number }) => {
+    const response = await api.get('/fondos/', { params });
+    return response.data;
+  },
+
+  create: async (data: { nombre: string; familiar: string; capital_inicial: string; activo?: boolean }): Promise<Fondo> => {
+    const response = await api.post('/fondos/', data);
+    return response.data;
+  },
+
+  get: async (id: number): Promise<Fondo> => {
+    const response = await api.get(`/fondos/${id}/`);
+    return response.data;
+  },
+
+  inyeccion: async (id: number, data: { monto: string; descripcion?: string }): Promise<Fondo> => {
+    const response = await api.post(`/fondos/${id}/inyeccion/`, data);
+    return response.data;
+  },
+
+  retiro: async (id: number, data: { monto: string; descripcion?: string }): Promise<Fondo> => {
+    const response = await api.post(`/fondos/${id}/retiro/`, data);
+    return response.data;
+  },
+
+  movimientos: async (id: number, params?: { page?: number }) => {
+    const response = await api.get(`/fondos/${id}/movimientos/`, { params });
+    return response.data;
+  },
+};
+
+// Prestamo endpoints
+export const prestamoService = {
+  list: async (params?: { search?: string; page?: number; estado?: string }) => {
+    const response = await api.get('/prestamos/', { params });
+    return response.data;
+  },
+
+  create: async (data: {
+    cliente: number;
+    monto_principal: string;
+    tasa_interes: string;
+    plazo_meses: number;
+    periodicidad: 'MENSUAL' | 'QUINCENAL';
+    fecha_desembolso: string;
+    fecha_primer_corte: string;
+    fondos_detalle: Array<{ fondo: number; monto_aportado: string; porcentaje_pi: string }>;
+  }): Promise<Prestamo> => {
+    const response = await api.post('/prestamos/', data);
+    return response.data;
+  },
+
+  get: async (id: number): Promise<Prestamo> => {
+    const response = await api.get(`/prestamos/${id}/`);
+    return response.data;
   },
 };
 
