@@ -13,11 +13,11 @@
 |--------|------|--------|--------|----------|--------|
 | **Sprint 0** | Infraestructura Base + Padrón Clientes | 7 (TK01-TK07) | ✅ **COMPLETADO** | 100% | 2026-09-22 |
 | **Sprint 1** | Fondos Familiares + Desembolso Multifondo | 7 (TK08-TK14) | ✅ **COMPLETADO** | 100% | 2026-09-23 → 2026-09-24 |
-| **Sprint 2** | Motor Amortización + Cobranza + Liquidación 50/50 | 6 (TK15-TK20) | ⏳ Pendiente | 0% | - |
+| **Sprint 2** | Motor Amortización + Cobranza + Liquidación 50/50 | 6 (TK15-TK20) | ✅ Completado | 100% | 2026-09-25 |
 | **Sprint 3** | Control Mora + PDF Legal + Android | 6 (TK21-TK26) | ⏳ Pendiente | 0% | - |
 | **Sprint 4** | Pruebas + Despliegue + Validación Campo | 5 (TK27-TK31) | ⏳ Pendiente | 0% | - |
 
-**Total:** 31 tareas | **Completadas:** 18 | **En progreso:** 0 | **Pendientes:** 13
+**Total:** 31 tareas | **Completadas:** 24 | **En progreso:** 0 | **Pendientes:** 7
 
 ---
 
@@ -129,18 +129,55 @@ def create(self, request, *args, **kwargs):
 
 ---
 
-## Sprint 2 - PENDIENTE ⏳
+## Sprint 2 - COMPLETADO ✅ (Backend + Frontend + Tests)
 
 **Objetivo:** Motor amortización (Ley 176), prelación cobros, liquidación 50/50
 
-| Task | Descripción | Requisitos | Est. |
-|------|-------------|------------|------|
-| CAVI-TK15 | Motor amortización interés sobre saldo (Ley 176) | FR-08, BR-03 | 6h |
-| CAVI-TK16 | Prelación cobros: mora → interés → capital | FR-09, CU-04 | 5h |
-| CAVI-TK17 | Liquidación 50/50 + prorrateo a fondos | FR-10, BR-02, CU-04 | 6h |
-| CAVI-TK18 | Frontend: Asentamiento rápido móvil | UR-03, NFR-05 | 6h |
-| CAVI-TK19 | Frontend: Recibo digital desglose | UR-03, CU-04 | 4h |
-| CAVI-TK20 | Pruebas integración consistencia decimal | TC-BIL-001, TC-BIL-002 | 5h |
+| Task | Descripción | Requisitos | Est. | Estado | Commit |
+|------|-------------|------------|------|--------|--------|
+| CAVI-TK15 | Motor amortización interés sobre saldo (Ley 176) | FR-08, BR-03 | 6h | ✅ Completado | 29c1b83 |
+| CAVI-TK16 | Prelación cobros: mora → interés → capital | FR-09, CU-04 | 5h | ✅ Completado | 29c1b83 |
+| CAVI-TK17 | Liquidación 50/50 + prorrateo a fondos | FR-10, BR-02, CU-04 | 6h | ✅ Completado | 29c1b83 |
+| CAVI-TK18 | Frontend: Asentamiento rápido móvil | UR-03, NFR-05 | 6h | ✅ Completado | 29c1b83 |
+| CAVI-TK19 | Frontend: Recibo digital desglose | UR-03, CU-04 | 4h | ✅ Completado | 29c1b83 |
+| CAVI-TK20 | Pruebas integración consistencia decimal | TC-BIL-001, TC-BIL-002 | 5h | ✅ Completado | 29c1b83 |
+
+**Detalle:** `docs/SPRINT_2_AVANCES.md`
+
+---
+
+## Rediseño UI Stitch - COMPLETADO ✅ (base para Sprint 3)
+
+**Objetivo:** Migrar el diseño Stitch al frontend real con datos del backend, sin alterar reglas legales
+
+| Fase | Entregable | Estado | Commit |
+|------|-----------|--------|--------|
+| 1 | Design system Material 3 (tokens, Inter, Material Symbols) | ✅ | c484a52 |
+| 2 | Primitivos UI (Icon, Button, Card, KpiTile, DataTable, Modal, Field, Toast) | ✅ | (Fase 2) |
+| 3 | Shell: sidebar 260px por rol, topbar, drawer móvil, PageHeader | ✅ | 146caf9 |
+| 4 | API: agregados dashboard, caja, agenda, simulación de cuota, preview de prelación | ✅ | 08b38aa |
+| 5 | `DashboardPage`: KPIs reales, cartera filtrable, tabla responsive | ✅ | 3a8166b |
+| 6-7 | `CobrosPage`: agenda, caja propia y modal de abono con prelación en vivo | ✅ | d152e94 |
+
+**Nuevos endpoints (todos con tests):**
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| GET | `/api/dashboard/` | ADMINISTRADOR | KPIs, bolsas, cartera y abonos del día |
+| GET | `/api/dashboard/caja/` | Autenticado | Recaudos propios del usuario (Ley 787) |
+| GET | `/api/dashboard/agenda/` | Autenticado | Agenda de cobranza sin detalle Pi |
+| POST | `/api/prestamos/simular/` | Autenticado | Amortización sin persistir |
+| POST | `/api/prestamos/{id}/preview_pago/` | Autenticado | Prelación Art. 3180 sin asentar |
+
+**Decisiones legales aplicadas:**
+
+- `DIAS_GRACIA = 4` compartido entre backend (`services/estados.py`) y frontend (`lib/estadoPrestamo.ts`)
+- El semáforo Al Día / En Gracia / En Mora se **calcula**, no se cobra: la mora generadora llega en Sprint 3
+- Se conservan únicamente `MENSUAL` y `QUINCENAL` (sin cobro diario)
+- `COBRANZA` no recibe fondos, detalle Pi, liquidaciones 50/50 ni ganancias administrativas
+- El preview y el pago real comparten `_prelacion()`, por lo que el desglose nunca difiere
+
+**Documentación:** `docs/UI_SISTEMA_DISENO.md`
 
 ---
 
@@ -187,8 +224,9 @@ def create(self, request, *args, **kwargs):
 
 ## Próximos Pasos Inmediatos
 
-1. Commit + push de TK14 (tests pytest + vitest)
-2. **Sprint 2 (TK15-TK20):** Motor amortización (Ley 176), prelación cobros, liquidación 50/50, asentamiento móvil + recibo digital
+1. **Sprint 3 (TK21-TK26):** Motor de mora (4 días de gracia), PDF/A legal, pagaré, descarga/impresión y empaquetado Android
+2. Enganchar la vistas de Préstamo y Clientes al shell nuevo (siguen con su layout anterior)
+3. `git push` de los commits de UI y API (locales, aún no enviados)
 
 ---
 
