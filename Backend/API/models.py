@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -170,6 +171,13 @@ class Prestamo(models.Model):
         verbose_name=_('cliente')
     )
     monto_principal = models.DecimalField(_('monto principal'), max_digits=14, decimal_places=2)
+    saldo_insoluto = models.DecimalField(
+        _('saldo insoluto'),
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text=_('Capital aún no amortizado (se actualiza con cada pago)')
+    )
     tasa_interes = models.DecimalField(_('tasa interés'), max_digits=5, decimal_places=4)
     plazo_meses = models.PositiveIntegerField(_('plazo meses'))
     periodicidad = models.CharField(
@@ -228,3 +236,63 @@ class PrestamoFondoDetalle(models.Model):
 
     def __str__(self):
         return f"{self.prestamo} - {self.fondo} (Pi: {self.porcentaje_pi})"
+
+
+class Pago(models.Model):
+    class MetodoPago(models.TextChoices):
+        EFECTIVO = 'EFECTIVO', _('Efectivo')
+        TRANSFERENCIA = 'TRANSFERENCIA', _('Transferencia')
+        CHEQUE = 'CHEQUE', _('Cheque')
+        OTRO = 'OTRO', _('Otro')
+
+    id = models.BigAutoField(primary_key=True)
+    prestamo = models.ForeignKey(
+        Prestamo,
+        on_delete=models.PROTECT,
+        related_name='pagos',
+        verbose_name=_('préstamo')
+    )
+    monto_total = models.DecimalField(_('monto total aplicado'), max_digits=14, decimal_places=2)
+    fecha_pago = models.DateField(_('fecha de pago'))
+    metodo_pago = models.CharField(_('método de pago'), max_length=20, choices=MetodoPago.choices)
+    referencia_bancaria = models.CharField(_('referencia bancaria'), max_length=100, blank=True, default='')
+    codigo_comprobante = models.CharField(
+        _('código comprobante'),
+        max_length=30,
+        unique=True,
+        editable=False,
+        null=True
+    )
+    aplicacion_mora = models.DecimalField(_('aplicación mora'), max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    aplicacion_interes = models.DecimalField(_('aplicación interés'), max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    aplicacion_capital = models.DecimalField(_('aplicación capital'), max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    interes_administracion = models.DecimalField(
+        _('interés a administración'),
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text=_('50% del interés corriente que queda para CAVI')
+    )
+    interes_fondos = models.DecimalField(
+        _('interés a fondos'),
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text=_('50% del interés corriente que se reparte entre los fondos según Pi')
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='pagos',
+        verbose_name=_('usuario que asienta')
+    )
+    creado_en = models.DateTimeField(_('creado en'), default=timezone.now)
+
+    class Meta:
+        verbose_name = _('pago')
+        verbose_name_plural = _('pagos')
+        db_table = 'pagos'
+        ordering = ['-creado_en']
+
+    def __str__(self):
+        return f"{self.codigo_comprobante or self.id} - {self.prestamo} - {self.monto_total}"

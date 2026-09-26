@@ -12,9 +12,11 @@ from .serializers import (
     UsuarioSerializer, UsuarioLoginSerializer, ClienteSerializer,
     FondoSerializer, FondoCreateSerializer, InyeccionFondoSerializer,
     RetiroFondoSerializer, MovimientoFondoSerializer,
-    PrestamoSerializer, PrestamoCreateSerializer, PrestamoFondoDetalleSerializer
+    PrestamoSerializer, PrestamoCreateSerializer, PrestamoFondoDetalleSerializer,
+    PagoImputacionSerializer, PagoSerializer
 )
 from .services.amortizacion import generar_proyeccion, validar_tasa
+from .services.pagos import aplicar_pago
 
 Usuario = get_user_model()
 
@@ -196,7 +198,10 @@ class PrestamoViewSet(viewsets.ModelViewSet):
         monto_principal = serializer.validated_data['monto_principal']
 
         with transaction.atomic():
-            prestamo = Prestamo.objects.create(**serializer.validated_data)
+            prestamo = Prestamo.objects.create(
+                saldo_insoluto=monto_principal,
+                **serializer.validated_data
+            )
 
             for fd_data in fondos_detalle_data:
                 fondo = fd_data['fondo']
@@ -238,3 +243,24 @@ class PrestamoViewSet(viewsets.ModelViewSet):
         prestamo = self.get_object()
         validar_tasa(prestamo.tasa_interes)
         return Response(generar_proyeccion(prestamo))
+
+    @action(detail=True, methods=['post'])
+    def pagos(self, request, pk=None):
+        """Asienta un cobro con imputación legal (Art. 3180 Código Civil)."""
+        prestamo = self.get_object()
+        serializer = PagoImputacionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+        pago, info = aplicar_pago(
+            prestamo=prestamo,
+            monto=data['monto'],
+            fecha_pago=data['fecha_pago'],
+            metodo_pago=data['metodo_pago'],
+            referencia_bancaria=data.get('referencia_bancaria', ''),
+            usuario=request.user,
+        )
+
+        output = PagoSerializer(pago, context=self.get_serializer_context()).data
+        output['exceso_no_aplicado'] = str(info['exceso_no_aplicado'])
+        return Response(output, status=status.HTTP_201_CREATED)

@@ -1,5 +1,8 @@
 from rest_framework import serializers
-from .models import Usuario, Cliente, RolUsuario, Fondo, MovimientoFondo, Prestamo, PrestamoFondoDetalle
+from django.db.models import Sum
+from .models import Usuario, Cliente, RolUsuario, Fondo, MovimientoFondo, Prestamo, PrestamoFondoDetalle, Pago
+from .services.pagos import totales_insolutos, interes_minimo_vencido
+from django.utils import timezone
 from decimal import Decimal
 
 
@@ -136,23 +139,63 @@ class PrestamoSerializer(serializers.ModelSerializer):
     fondos_detalle = PrestamoFondoDetalleSerializer(many=True, read_only=True)
     total_aportado = serializers.SerializerMethodField()
     suma_pi = serializers.SerializerMethodField()
+    saldo_insoluto = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    saldo_deudor = serializers.SerializerMethodField()
+    interes_minimo_ciclo = serializers.SerializerMethodField()
+    proxima_cuota = serializers.SerializerMethodField()
 
     class Meta:
         model = Prestamo
-        fields = ['id', 'cliente', 'cliente_nombre', 'monto_principal', 'tasa_interes', 'plazo_meses', 'periodicidad',
+        fields = ['id', 'cliente', 'cliente_nombre', 'monto_principal', 'saldo_insoluto', 'saldo_deudor',
+                  'interes_minimo_ciclo', 'proxima_cuota',
+                  'tasa_interes', 'plazo_meses', 'periodicidad',
                   'fecha_desembolso', 'fecha_primer_corte', 'estado', 'creado_en', 'actualizado_en',
                   'fondos_detalle', 'total_aportado', 'suma_pi']
-        read_only_fields = ['id', 'creado_en', 'actualizado_en', 'estado']
+        read_only_fields = ['id', 'creado_en', 'actualizado_en', 'estado', 'saldo_insoluto']
 
     def get_total_aportado(self, obj):
-        from django.db.models import Sum
         total = obj.fondos_detalle.aggregate(total=Sum('monto_aportado'))['total']
         return total or Decimal('0.00')
 
     def get_suma_pi(self, obj):
-        from django.db.models import Sum
         total = obj.fondos_detalle.aggregate(total=Sum('porcentaje_pi'))['total']
         return total or Decimal('0.0000')
+
+    def get_saldo_deudor(self, obj):
+        _cap, _int, _mora, deuda_total, _proy = totales_insolutos(obj, timezone.localdate())
+        return deuda_total
+
+    def get_interes_minimo_ciclo(self, obj):
+        return interes_minimo_vencido(obj, timezone.localdate())
+
+    def get_proxima_cuota(self, obj):
+        _cap, _int, _mora, _deuda, proy = totales_insolutos(obj, timezone.localdate())
+        hoy = timezone.localdate()
+        for fila in proy['periodos']:
+            if fila['fecha_vencimiento'] >= hoy:
+                return {
+                    'fecha_vencimiento': fila['fecha_vencimiento'],
+                    'cuota': fila['cuota'],
+                    'interes': fila['interes'],
+                    'capital': fila['capital'],
+                    'periodo': fila['periodo'],
+                }
+        return None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        if request:
+            es_cobranza = (
+                getattr(request.user, 'rol', None) == RolUsuario.COBRANZA
+                if hasattr(request.user, 'rol') else False
+            )
+            if es_cobranza:
+                # Privacidad Ley 787: cobranza no ve origen de fondos ni utilidades.
+                data.pop('fondos_detalle', None)
+                data.pop('total_aportado', None)
+                data.pop('suma_pi', None)
+        return data
 
 
 class PrestamoCreateSerializer(serializers.ModelSerializer):
@@ -192,3 +235,35 @@ class PrestamoCreateSerializer(serializers.ModelSerializer):
                 })
 
         return attrs
+
+
+class PagoImputacionSerializer(serializers.Serializer):
+    monto = serializers.DecimalField(max_digits=14, decimal_places=2)
+    fecha_pago = serializers.DateField()
+    metodo_pago = serializers.ChoiceField(choices=Pago.MetodoPago.choices)
+    referencia_bancaria = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_monto(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("El monto debe ser mayor a cero.")
+        return value.quantize(Decimal('0.01'))
+
+
+class PagoSerializer(serializers.ModelSerializer):
+    prestamo_cliente = serializers.CharField(source='prestamo.cliente.__str__', read_only=True)
+    prestamo_monto = serializers.DecimalField(source='prestamo.monto_principal', max_digits=14, decimal_places=2, read_only=True)
+    metodo_pago_display = serializers.CharField(source='get_metodo_pago_display', read_only=True)
+    usuario_nombre = serializers.CharField(source='usuario.nombre_completo', read_only=True)
+    saldo_insoluto_tras_pago = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Pago
+        fields = ['id', 'codigo_comprobante', 'prestamo', 'prestamo_cliente', 'prestamo_monto',
+                  'monto_total', 'fecha_pago', 'metodo_pago', 'metodo_pago_display', 'referencia_bancaria',
+                  'aplicacion_mora', 'aplicacion_interes', 'aplicacion_capital',
+                  'interes_administracion', 'interes_fondos',
+                  'saldo_insoluto_tras_pago', 'usuario_nombre', 'creado_en']
+        read_only_fields = fields
+
+    def get_saldo_insoluto_tras_pago(self, obj):
+        return obj.prestamo.saldo_insoluto
