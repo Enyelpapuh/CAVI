@@ -127,6 +127,7 @@ class MovimientoFondo(models.Model):
         RETIRO = 'RETIRO', _('Retiro')
         DESEMBOLSO = 'DESEMBOLSO', _('Desembolso')
         GANANCIA = 'GANANCIA', _('Ganancia')
+        REINTEGRO = 'REINTEGRO', _('Reintegro')
 
     id = models.BigAutoField(primary_key=True)
     fondo = models.ForeignKey(
@@ -134,6 +135,14 @@ class MovimientoFondo(models.Model):
         on_delete=models.PROTECT,
         related_name='movimientos',
         verbose_name=_('fondo')
+    )
+    pago = models.ForeignKey(
+        'Pago',
+        on_delete=models.PROTECT,
+        related_name='movimientos_fondo',
+        verbose_name=_('pago que origina'),
+        null=True,
+        blank=True
     )
     tipo = models.CharField(_('tipo'), max_length=20, choices=TipoMovimiento.choices)
     monto = models.DecimalField(_('monto'), max_digits=14, decimal_places=2)
@@ -296,3 +305,56 @@ class Pago(models.Model):
 
     def __str__(self):
         return f"{self.codigo_comprobante or self.id} - {self.prestamo} - {self.monto_total}"
+
+
+class PagoFondoDetalle(models.Model):
+    """Rastro inmutable de la liquidación por fondo (trazabilidad UAF, Ley 977)."""
+
+    id = models.BigAutoField(primary_key=True)
+    pago = models.ForeignKey(
+        Pago,
+        on_delete=models.PROTECT,
+        related_name='fondos_detalle',
+        verbose_name=_('pago')
+    )
+    fondo = models.ForeignKey(
+        Fondo,
+        on_delete=models.PROTECT,
+        related_name='pagos_detalle',
+        verbose_name=_('fondo')
+    )
+    porcentaje_pi = models.DecimalField(_('porcentaje Pi'), max_digits=5, decimal_places=4)
+    capital_reintegrado = models.DecimalField(_('capital reintegrado'), max_digits=14, decimal_places=2)
+    ganancia = models.DecimalField(_('ganancia (50% fondos)'), max_digits=14, decimal_places=2)
+
+    class Meta:
+        verbose_name = _('detalle fondo pago')
+        verbose_name_plural = _('detalles fondos pagos')
+        db_table = 'pago_fondos_detalle'
+
+    def __str__(self):
+        return f"{self.pago.codigo_comprobante or self.pago_id} - {self.fondo.nombre}"
+
+
+class GananciaAdministracion(models.Model):
+    """Acumulador global del 50% de interés que queda para CAVI."""
+
+    id = models.BigAutoField(primary_key=True)
+    pago = models.OneToOneField(
+        Pago,
+        on_delete=models.PROTECT,
+        related_name='ganancia_administracion',
+        verbose_name=_('pago')
+    )
+    monto = models.DecimalField(_('monto 50% administración'), max_digits=14, decimal_places=2)
+    fecha = models.DateField(_('fecha'), default=timezone.localdate)
+    creado_en = models.DateTimeField(_('creado en'), default=timezone.now)
+
+    class Meta:
+        verbose_name = _('ganancia de administración')
+        verbose_name_plural = _('ganancias de administración')
+        db_table = 'ganancias_administracion'
+        ordering = ['-creado_en']
+
+    def __str__(self):
+        return f"Admin {self.monto} - {self.pago.codigo_comprobante or self.pago_id}"

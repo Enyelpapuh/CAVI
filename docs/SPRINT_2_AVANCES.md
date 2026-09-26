@@ -13,7 +13,7 @@
 |------|-------------|------|--------|----------|---------------|-------|---------|
 | CAVI-TK15 | Motor de amortización interés sobre saldo insoluto (Ley 176) | 6h | ✅ Completado | 100% | Cuota constante francesa, tope usura BCN configurable (`.env` TASA_MAXIMA_LEGAL, default 0.0300), prohibición anatocismo, MENSUAL/QUINCENAL, último período ajusta saldo a 0. Endpoint GET /api/prestamos/{id}/amortizacion/. | 2026-09-26 | - |
 | CAVI-TK16 | Algoritmo de imputación de pagos (Art. 3180 Código Civil) | 5h | ✅ Completado | 100% | Prelación mora→interés corriente→capital, bloqueo 400 si pago < interés mínimo del ciclo vencido, truncado de sobrepagos a la deuda, CANCELADO automático al saldo 0. Código único PAG-XXXXX. Modelo Pago + migración 0003 + saldo_insoluto (backfill). Serializer role-aware: COBRANZA no ve fondos/utilidades (Ley 787). 10 tests pytest nuevos. | 2026-09-26 | - |
-| CAVI-TK17 | Transacción de liquidación 50/50 y trazabilidad (Ley 977) | 6h | ⏳ Pendiente | 0% | PagoFondoDetalle, GananciaAdministracion, MovimientoFondo.pago, REINTEGRO. | - | - |
+| CAVI-TK17 | Transacción de liquidación 50/50 y trazabilidad (Ley 977) | 6h | ✅ Completado | 100% | 50% interés → GananciaAdministracion, 50% → fondos según Pi; reintegro capital por Pi con saldo_disponible/ganancias; movimientos GANANCIA/REINTEGRO con pago FK (rastro immutable UAF); PagoFondoDetalle. GET /api/pagos/{id}/ recibo. 5 tests nuevos (total 38). | 2026-09-26 | - |
 | CAVI-TK18 | Pantalla móvil de asentamiento de cobros + privacidad (Ley 787) | 6h | ⏳ Pendiente | 0% | Flujo ≤4 toques, rol COBRANZA oculta utilidades/fondos. | - | - |
 | CAVI-TK19 | Componente recibo digital de pago (Ley 842) | 4h | ⏳ Pendiente | 0% | Desglose, código único, imprimir PDF. | - | - |
 | CAVI-TK20 | Pruebas integración consistencia decimal en pagos parciales | 5h | ⏳ Pendiente | 0% | pytest + vitest. | - | - |
@@ -105,9 +105,46 @@ PrestamoSerializer ahora expone `saldo_deudor`, `saldo_insoluto`, `interes_minim
 
 ---
 
+## Detalle Técnico Completado (TK17)
+
+### Modelos (migración `0004`)
+
+```sql
+-- movimientos_fondo: + pago_id FK NULL (trazabilidad UAF), tipo ahora incluye 'REINTEGRO'
+-- pago_fondos_detalle: pago_id FK, fondo_id FK, porcentaje_pi, capital_reintegrado, ganancia
+-- ganancias_administracion: pago_id FK (OneToOne), monto, fecha
+```
+
+### Liquidación 50/50 dentro de la misma transacción ACID
+
+1. El interés corriente imputado al pago se divide: **50% administración** (`interes_administracion`, registrado en `GananciasAdministracion` como acumulador global) y **50% fondos** (`interes_fondos`).
+2. Para cada fondo participante (Pi del préstamo):
+   - `ganancia = interes_fondos × Pi` → `fondo.ganancias_acumuladas += ganancia`.
+   - `capital_reintegrado = capital_aplicado × Pi` → `fondo.saldo_disponible += capital_reintegrado`.
+   - Se crea `PagoFondoDetalle` (rastro inmutable por pago/fondo).
+   - Se crean `MovimientoFondo` **GANANCIA** y **REINTEGRO** con `pago` FK y descripción `Liquidación PAG-XXXXX …`.
+3. División proporcional con absorción del remanente en la última parte (`_split_proporcional`): la suma siempre cuadra al centavo exacto; nunca se pierde ni se inventa dinero.
+4. Todo dentro de `@transaction.atomic` → rollback total si falla (fondos insuficientes, etc.).
+
+### Endpoint Nuevo
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| GET | /api/pagos/ | Listar pagos (paginado, ?prestamo=ID) | Sí |
+| GET | /api/pagos/{id}/ | Recibo completo con PagoFondoDetalle + GananciaAdministracion | Sí |
+
+### Privacidad recibo (Ley 787)
+
+El recibo (PagoReciboSerializer) oculta para rol **COBRANZA**: `fondos_detalle`, `ganancia_administracion`, `interes_administracion` e `interes_fondos` (no ve utilidades ni origen de fondos). Los demás datos del desglose legal sí.
+
+### Verificación
+
+- 38/38 pytest.
+- Casos: 50/50 justo, reintegro capital + ganancia con Pi 1.0000, multifondo sin perder centavos, cancelación con saldo de fondos íntegro, recibo (admin vs cobranza), trazabilidad por pago.
+
+---
+
 ## Próximos Pasos
 
-1. **TK16:** Imputación de pagos (Art. 3180): prelación mora → interés corriente → capital, bloqueo de pagos menores al interés mínimo del ciclo, truncado de sobrepagos, estado CANCELADO al saldo 0. POST /api/prestamos/{id}/pagos/.
-2. **TK17:** Liquidación 50/50 + trazabilidad UAF y reintegro de capital por Pi.
-3. **TK18-TK19:** Frontend de cobros y recibo.
-4. **TK20:** Pruebas de integración.
+1. **TK18-TK19:** Frontend de cobros (CobrosPage móvil) y recibo digital (Ley 842).
+2. **TK20:** Pruebas de integración de consistencia decimal en pagos parciales.

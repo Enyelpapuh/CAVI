@@ -1,6 +1,9 @@
 from rest_framework import serializers
 from django.db.models import Sum
-from .models import Usuario, Cliente, RolUsuario, Fondo, MovimientoFondo, Prestamo, PrestamoFondoDetalle, Pago
+from .models import (
+    Usuario, Cliente, RolUsuario, Fondo, MovimientoFondo, Prestamo,
+    PrestamoFondoDetalle, Pago, PagoFondoDetalle, GananciaAdministracion,
+)
 from .services.pagos import totales_insolutos, interes_minimo_vencido
 from django.utils import timezone
 from decimal import Decimal
@@ -267,3 +270,43 @@ class PagoSerializer(serializers.ModelSerializer):
 
     def get_saldo_insoluto_tras_pago(self, obj):
         return obj.prestamo.saldo_insoluto
+
+
+class PagoFondoDetalleSerializer(serializers.ModelSerializer):
+    fondo_nombre = serializers.CharField(source='fondo.nombre', read_only=True)
+    fondo_familiar = serializers.CharField(source='fondo.familiar', read_only=True)
+
+    class Meta:
+        model = PagoFondoDetalle
+        fields = ['id', 'fondo', 'fondo_nombre', 'fondo_familiar', 'porcentaje_pi',
+                  'capital_reintegrado', 'ganancia']
+        read_only_fields = fields
+
+
+class PagoReciboSerializer(PagoSerializer):
+    fondos_detalle = PagoFondoDetalleSerializer(many=True, read_only=True)
+    ganancia_administracion = serializers.SerializerMethodField()
+    saldo_deudor_tras_pago = serializers.SerializerMethodField()
+
+    class Meta(PagoSerializer.Meta):
+        fields = PagoSerializer.Meta.fields + [
+            'fondos_detalle', 'ganancia_administracion', 'saldo_deudor_tras_pago']
+
+    def get_ganancia_administracion(self, obj):
+        ga = getattr(obj, 'ganancia_administracion', None)
+        return str(ga.monto) if ga else Decimal('0.00')
+
+    def get_saldo_deudor_tras_pago(self, obj):
+        prestamo = obj.prestamo
+        _cap, _int, _mora, deuda, _proy = totales_insolutos(prestamo, obj.fecha_pago)
+        return deuda
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and getattr(request.user, 'rol', None) == RolUsuario.COBRANZA:
+            data.pop('fondos_detalle', None)
+            data.pop('ganancia_administracion', None)
+            data.pop('interes_administracion', None)
+            data.pop('interes_fondos', None)
+        return data

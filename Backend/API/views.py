@@ -7,13 +7,15 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum, F
 from decimal import Decimal
-from .models import Usuario, Cliente, Fondo, MovimientoFondo, Prestamo, PrestamoFondoDetalle
+from .models import (
+    Usuario, Cliente, Fondo, MovimientoFondo, Prestamo, PrestamoFondoDetalle, Pago
+)
 from .serializers import (
     UsuarioSerializer, UsuarioLoginSerializer, ClienteSerializer,
     FondoSerializer, FondoCreateSerializer, InyeccionFondoSerializer,
     RetiroFondoSerializer, MovimientoFondoSerializer,
     PrestamoSerializer, PrestamoCreateSerializer, PrestamoFondoDetalleSerializer,
-    PagoImputacionSerializer, PagoSerializer
+    PagoImputacionSerializer, PagoSerializer, PagoReciboSerializer
 )
 from .services.amortizacion import generar_proyeccion, validar_tasa
 from .services.pagos import aplicar_pago
@@ -264,3 +266,17 @@ class PrestamoViewSet(viewsets.ModelViewSet):
         output = PagoSerializer(pago, context=self.get_serializer_context()).data
         output['exceso_no_aplicado'] = str(info['exceso_no_aplicado'])
         return Response(output, status=status.HTTP_201_CREATED)
+
+
+class PagoViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Pago.objects.select_related('prestamo__cliente', 'usuario').prefetch_related(
+        'fondos_detalle__fondo', 'ganancia_administracion')
+    serializer_class = PagoReciboSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        prestamo_id = self.request.query_params.get('prestamo', None)
+        if prestamo_id:
+            queryset = queryset.filter(prestamo_id=prestamo_id)
+        return queryset.order_by('-creado_en')

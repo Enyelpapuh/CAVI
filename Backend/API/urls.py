@@ -7,6 +7,7 @@ from .views import (
     ClienteViewSet,
     FondoViewSet,
     PrestamoViewSet,
+    PagoViewSet,
 )
 
 router = DefaultRouter()
@@ -14,6 +15,7 @@ router.register(r'usuarios', UsuarioViewSet, basename='usuario')
 router.register(r'clientes', ClienteViewSet, basename='cliente')
 router.register(r'fondos', FondoViewSet, basename='fondo')
 router.register(r'prestamos', PrestamoViewSet, basename='prestamo')
+router.register(r'pagos', PagoViewSet, basename='pago')
 
 urlpatterns = [
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),

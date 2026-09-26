@@ -16,12 +16,39 @@ from django.db import transaction
 from django.db.models import Sum
 from rest_framework import serializers
 
-from ..models import Pago, Prestamo
+from ..models import (
+    GananciaAdministracion,
+    MovimientoFondo,
+    Pago,
+    PagoFondoDetalle,
+    Prestamo,
+)
 from .amortizacion import generar_proyeccion, validar_tasa
 
 
 def _cantidad(val):
     return Decimal('0.00') if val is None else Decimal(str(val))
+
+
+def _split_proporcional(total, pesos):
+    """Divide `total` exactamente según `pesos` sin perder centavos.
+
+    El último ítem absorbe el remanente del redondeo para que la suma
+    de las partes sea idéntica a `total`.
+    """
+    total = _cantidad(total)
+    partes = []
+    acumulado = Decimal('0.00')
+    for i, peso in enumerate(pesos):
+        if i == len(pesos) - 1:
+            partes.append(total - acumulado)
+        else:
+            parte = (total * _cantidad(peso)).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+            acumulado += parte
+            partes.append(parte)
+    return partes
 
 
 def _interes_vencido_pendiente(prestamo, proy, fecha):
@@ -132,6 +159,79 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
     codigo = f'PAG-{pago.id:05d}'
     Pago.objects.filter(pk=pago.pk).update(codigo_comprobante=codigo)
     pago.codigo_comprobante = codigo
+
+    # ── Liquidación 50/50 (Ley 977) ────────────────────────────────────────
+    # Interés corriente pagado → 50% administración, 50% fondos (según Pi).
+    if aplicada_interes > 0:
+        interes_administracion = (aplicada_interes / 2).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        interes_fondos = aplicada_interes - interes_administracion
+    else:
+        interes_administracion = Decimal('0.00')
+        interes_fondos = Decimal('0.00')
+
+    participantes = list(
+        prestamo.fondos_detalle.select_related('fondo').order_by('id')
+    )
+    if participantes:
+        pis = [d.porcentaje_pi for d in participantes]
+        capitales = _split_proporcional(aplicada_capital, pis)
+        ganancias = _split_proporcional(interes_fondos, pis)
+
+        for detalle, capital_partida, ganancia in zip(
+                participantes, capitales, ganancias):
+            fondo = detalle.fondo
+            fondo.refresh_from_db()
+            saldo_anterior = fondo.saldo_disponible
+
+            PagoFondoDetalle.objects.create(
+                pago=pago,
+                fondo=fondo,
+                porcentaje_pi=detalle.porcentaje_pi,
+                capital_reintegrado=capital_partida,
+                ganancia=ganancia,
+            )
+
+            ganancias_antes = fondo.ganancias_acumuladas
+            fondo.saldo_disponible = saldo_anterior + capital_partida
+            fondo.ganancias_acumuladas = ganancias_antes + ganancia
+            fondo.save(update_fields=['saldo_disponible', 'ganancias_acumuladas', 'actualizado_en'])
+
+            # Trazabilidad inmutable (UAF): toda ganancia/reintegro referencia el pago.
+            if ganancia > 0:
+                MovimientoFondo.objects.create(
+                    fondo=fondo,
+                    pago=pago,
+                    tipo=MovimientoFondo.TipoMovimiento.GANANCIA,
+                    monto=ganancia,
+                    saldo_anterior=saldo_anterior,
+                    saldo_posterior=saldo_anterior + capital_partida,
+                    descripcion=f'Liquidación {codigo}: ganancia 50% fondos (Pi {detalle.porcentaje_pi})',
+                )
+            if capital_partida > 0:
+                MovimientoFondo.objects.create(
+                    fondo=fondo,
+                    pago=pago,
+                    tipo=MovimientoFondo.TipoMovimiento.REINTEGRO,
+                    monto=capital_partida,
+                    saldo_anterior=saldo_anterior,
+                    saldo_posterior=saldo_anterior + capital_partida,
+                    descripcion=f'Reintegro capital {codigo} (Pi {detalle.porcentaje_pi})',
+                )
+
+    if interes_administracion > 0:
+        GananciaAdministracion.objects.create(
+            pago=pago,
+            monto=interes_administracion,
+            fecha=fecha_pago,
+        )
+
+    Pago.objects.filter(pk=pago.pk).update(
+        interes_administracion=interes_administracion,
+        interes_fondos=interes_fondos,
+    )
+    pago.interes_administracion = interes_administracion
+    pago.interes_fondos = interes_fondos
 
     mora_restante = max(Decimal('0.00'), mora_insoluto - aplicada_mora)
     interes_restante = max(Decimal('0.00'), interes_insoluto - aplicada_interes)
