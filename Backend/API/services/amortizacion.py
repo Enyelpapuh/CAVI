@@ -48,13 +48,15 @@ def generar_proyeccion(prestamo, fecha_referencia=None):
     """Genera la tabla de proyección de cuotas.
 
     Args:
-        prestamo: instancia de Prestamo.
+        prestamo: instancia de Prestamo. Acepta una instancia sin persistir
+            (simulación de cuota estimada), por eso el cliente se lee del
+            `cliente_id` en vez de la relación cargada.
         fecha_referencia: fecha base para el primer vencimiento
             (default: fecha_primer_corte).
 
     Returns:
-        list[dict]: [{periodo, fecha_vencimiento, cuota, interes, capital,
-                      saldo_insoluto, total_interes, total_cuotas}]
+        dict: {periodo, fecha_vencimiento, cuota, interes, capital,
+               saldo_insoluto, total_interes, total_cuotas}
     """
     from datetime import timedelta
 
@@ -96,7 +98,7 @@ def generar_proyeccion(prestamo, fecha_referencia=None):
 
     return {
         'prestamo': prestamo.id,
-        'cliente': prestamo.cliente.id,
+        'cliente': prestamo.cliente_id,
         'monto_principal': prestamo.monto_principal,
         'tasa_periodica': i,
         'periodicidad': prestamo.periodicidad,

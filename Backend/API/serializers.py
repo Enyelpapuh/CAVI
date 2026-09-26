@@ -6,6 +6,7 @@ from .models import (
 )
 from .services.pagos import totales_insolutos, interes_minimo_vencido
 from .services.amortizacion import validar_tasa
+from .services.estados import DIAS_GRACIA, dias_atraso, estado_efectivo
 from django.utils import timezone
 from decimal import Decimal
 
@@ -138,6 +139,41 @@ class PrestamoFondoDetalleSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class PagoPreviewSerializer(serializers.Serializer):
+    """Entrada del preview de abono: solo monto y fecha, no asienta nada."""
+
+    monto = serializers.DecimalField(max_digits=14, decimal_places=2)
+    fecha_pago = serializers.DateField(required=False, default=timezone.localdate)
+
+    def validate_monto(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("El monto debe ser mayor a cero.")
+        return value.quantize(Decimal('0.01'))
+
+
+class PrestamoSimulacionSerializer(serializers.Serializer):
+    """Proyección de cuotas con datos no persistidos (cuota estimada en vivo)."""
+
+    monto_principal = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal('0.01'))
+    tasa_interes = serializers.DecimalField(max_digits=5, decimal_places=4)
+    plazo_meses = serializers.IntegerField(min_value=1, max_value=120)
+    periodicidad = serializers.ChoiceField(choices=Prestamo.Periodicidad.choices)
+    fecha_primer_corte = serializers.DateField(required=False, default=timezone.localdate)
+    cliente = serializers.PrimaryKeyRelatedField(
+        queryset=Cliente.objects.all(), required=False, allow_null=True
+    )
+
+    def validate_tasa_interes(self, value):
+        return validar_tasa(value)
+
+    def validate(self, attrs):
+        if attrs['plazo_meses'] * (1 if attrs['periodicidad'] == 'MENSUAL' else 2) > 360:
+            raise serializers.ValidationError({
+                'plazo_meses': 'El plazo supera el máximo de 360 cortes permitidos.'
+            })
+        return attrs
+
+
 class PrestamoSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.__str__', read_only=True)
     fondos_detalle = PrestamoFondoDetalleSerializer(many=True, read_only=True)
@@ -147,11 +183,14 @@ class PrestamoSerializer(serializers.ModelSerializer):
     saldo_deudor = serializers.SerializerMethodField()
     interes_minimo_ciclo = serializers.SerializerMethodField()
     proxima_cuota = serializers.SerializerMethodField()
+    dias_atraso = serializers.SerializerMethodField()
+    dias_gracia = serializers.SerializerMethodField()
+    estado_efectivo = serializers.SerializerMethodField()
 
     class Meta:
         model = Prestamo
         fields = ['id', 'cliente', 'cliente_nombre', 'monto_principal', 'saldo_insoluto', 'saldo_deudor',
-                  'interes_minimo_ciclo', 'proxima_cuota',
+                  'interes_minimo_ciclo', 'proxima_cuota', 'dias_atraso', 'dias_gracia', 'estado_efectivo',
                   'tasa_interes', 'plazo_meses', 'periodicidad',
                   'fecha_desembolso', 'fecha_primer_corte', 'estado', 'creado_en', 'actualizado_en',
                   'fondos_detalle', 'total_aportado', 'suma_pi']
@@ -185,6 +224,15 @@ class PrestamoSerializer(serializers.ModelSerializer):
                     'periodo': fila['periodo'],
                 }
         return None
+
+    def get_dias_atraso(self, obj):
+        return dias_atraso(obj)
+
+    def get_dias_gracia(self, obj):
+        return DIAS_GRACIA
+
+    def get_estado_efectivo(self, obj):
+        return estado_efectivo(obj)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

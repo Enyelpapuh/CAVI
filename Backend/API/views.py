@@ -15,10 +15,13 @@ from .serializers import (
     FondoSerializer, FondoCreateSerializer, InyeccionFondoSerializer,
     RetiroFondoSerializer, MovimientoFondoSerializer,
     PrestamoSerializer, PrestamoCreateSerializer, PrestamoFondoDetalleSerializer,
-    PagoImputacionSerializer, PagoSerializer, PagoReciboSerializer
+    PagoImputacionSerializer, PagoSerializer, PagoReciboSerializer,
+    PagoPreviewSerializer, PrestamoSimulacionSerializer,
 )
+from .permissions import EsAdministrador
 from .services.amortizacion import generar_proyeccion, validar_tasa
-from .services.pagos import aplicar_pago
+from .services.dashboard import resumen_dashboard, caja_de_usuario, agenda_cobrador
+from .services.pagos import aplicar_pago, simular_pago
 
 Usuario = get_user_model()
 
@@ -167,6 +170,34 @@ class FondoViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+class DashboardViewSet(viewsets.ViewSet):
+    """Agregados del panel de control.
+
+    - `GET /api/dashboard/`      agregados de cartera (solo ADMINISTRADOR)
+    - `GET /api/dashboard/caja/` recaudos del propio usuario (cualquier rol)
+    - `GET /api/dashboard/agenda/` agenda de cobranza sin datos de fondos
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        if not EsAdministrador().has_permission(request, self):
+            return Response(
+                {'detail': EsAdministrador.message},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(resumen_dashboard())
+
+    @action(detail=False, methods=['get'])
+    def caja(self, request):
+        fecha = request.query_params.get('fecha')
+        return Response(caja_de_usuario(request.user, fecha=fecha))
+
+    @action(detail=False, methods=['get'])
+    def agenda(self, request):
+        return Response(agenda_cobrador(busqueda=request.query_params.get('search')))
+
+
 class PrestamoViewSet(viewsets.ModelViewSet):
     queryset = Prestamo.objects.select_related('cliente').prefetch_related('fondos_detalle__fondo')
     permission_classes = [permissions.IsAuthenticated]
@@ -245,6 +276,45 @@ class PrestamoViewSet(viewsets.ModelViewSet):
         prestamo = self.get_object()
         validar_tasa(prestamo.tasa_interes)
         return Response(generar_proyeccion(prestamo))
+
+    @action(detail=False, methods=['post'])
+    def simular(self, request):
+        """Cuota estimada y tabla de amortización sin persistir el préstamo."""
+        serializer = PrestamoSimulacionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        prestamo = Prestamo(
+            cliente=data.get('cliente'),
+            monto_principal=data['monto_principal'],
+            tasa_interes=data['tasa_interes'],
+            plazo_meses=data['plazo_meses'],
+            periodicidad=data['periodicidad'],
+            fecha_primer_corte=data['fecha_primer_corte'],
+            fecha_desembolso=data['fecha_primer_corte'],
+        )
+        prestamo.id = None
+
+        proyeccion = generar_proyeccion(prestamo)
+        if proyeccion['periodos']:
+            proyeccion['cuota_estimada'] = proyeccion['periodos'][0]['cuota']
+        return Response(proyeccion)
+
+    @action(detail=True, methods=['post'])
+    def preview_pago(self, request, pk=None):
+        """Desglose de prelación (Art. 3180) del abono antes de confirmarlo.
+
+        No escribe nada: la misma aritmética de `aplicar_pago` muestra en la
+        interfaz mora, interés, capital y nuevo saldo, incluyendo el bloqueo
+        por interés mínimo del ciclo vencido.
+        """
+        prestamo = self.get_object()
+        serializer = PagoPreviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        calculo = simular_pago(prestamo, data['monto'], data['fecha_pago'])
+        return Response({k: (str(v) if isinstance(v, Decimal) else v) for k, v in calculo.items()})
 
     @action(detail=True, methods=['post'])
     def pagos(self, request, pk=None):

@@ -182,3 +182,48 @@ class TestTransaccionAtomica:
         assert str(f1.saldo_disponible) == '30000.00'
         assert str(f2.saldo_disponible) == '40000.00'
         assert MovimientoFondo.objects.filter(tipo=MovimientoFondo.TipoMovimiento.DESEMBOLSO).count() == 2
+class TestEstadoEfectivoEnListado:
+    """El semáforo de cobranza viaja en el listado de préstamos."""
+
+    def _prestamo(self, cliente, fondo, dias_atraso):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        corte = timezone.localdate() - timedelta(days=dias_atraso)
+        return Prestamo.objects.create(
+            cliente=cliente, monto_principal=Decimal('50000.00'),
+            saldo_insoluto=Decimal('50000.00'), tasa_interes=Decimal('0.0250'),
+            plazo_meses=12, periodicidad='MENSUAL',
+            fecha_desembolso=corte, fecha_primer_corte=corte,
+        )
+
+    def test_prestamo_al_dia_no_tiene_atraso(self, auth_client, cliente, crear_fondo):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        self._prestamo(cliente, crear_fondo(), dias_atraso=-5)
+
+        res = auth_client.get(PRESTAMO_URL)
+
+        assert res.data['results'][0]['dias_atraso'] == 0
+        assert res.data['results'][0]['estado_efectivo'] == 'AL_DIA'
+        assert res.data['results'][0]['dias_gracia'] == 4
+
+    def test_prestamo_en_gracia_dentro_del_periodo(self, auth_client, cliente, crear_fondo):
+        self._prestamo(cliente, crear_fondo(), dias_atraso=2)
+
+        fila = auth_client.get(PRESTAMO_URL).data['results'][0]
+
+        assert fila['dias_atraso'] == 2
+        assert fila['estado_efectivo'] == 'EN_GRACIA'
+
+    def test_prestamo_en_mora_pasada_la_gracia(self, auth_client, cliente, crear_fondo):
+        self._prestamo(cliente, crear_fondo(), dias_atraso=9)
+
+        fila = auth_client.get(PRESTAMO_URL).data['results'][0]
+
+        assert fila['dias_atraso'] == 9
+        assert fila['estado_efectivo'] == 'EN_MORA'
+        # El corte vencido devenga interés corriente (1250.00) pero la mora por
+        # atraso todavía no se cobra (Sprint 3).
+        assert Decimal(fila['saldo_deudor']) == Decimal('51250.00')

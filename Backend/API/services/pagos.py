@@ -91,37 +91,43 @@ def totales_insolutos(prestamo, fecha):
     return capital_insoluto, interes_insoluto, mora_insoluto, deuda_total, proy
 
 
-@transaction.atomic
-def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_bancaria=''):
-    """Asienta un pago con imputación legal (prelación Art. 3180).
+def _prelacion(prestamo, monto, fecha_pago):
+    """Calcula la imputación de un abono sin tocar la base de datos.
+
+    Función pura: la usan tanto `simular_pago` (preview de la interfaz) como
+    `aplicar_pago` (asiento real), de modo que lo que el cobrador ve en
+    pantalla y lo que se persiste nunca divergen.
 
     Returns:
-        Pago, dict con 'exceso_no_aplicado'.
+        dict con el desglose de prelación, el saldo resultante y los
+        campos `es_valido` / `error` para las reglas de rechazo.
     """
-    validar_tasa(prestamo.tasa_interes)
-
     monto = _cantidad(monto).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    if monto <= 0:
-        raise serializers.ValidationError({'monto': 'El monto debe ser mayor a cero.'})
 
     minimo_ciclo = interes_minimo_vencido(prestamo, fecha_pago)
-    if monto < minimo_ciclo:
-        raise serializers.ValidationError({
+    capital_insoluto, interes_insoluto, mora_insoluto, deuda_total, _proy = totales_insolutos(
+        prestamo, fecha_pago
+    )
+
+    es_valido = True
+    error = None
+    if monto <= 0:
+        es_valido = False
+        error = {'monto': 'El monto debe ser mayor a cero.'}
+    elif monto < minimo_ciclo:
+        es_valido = False
+        error = {
             'monto': (
                 f'El pago ({monto}) es inferior al interés mínimo del ciclo vencido ({minimo_ciclo}). '
                 'Art. 3180: el abono debe cubrir primero el interés corriente antes de amortizar capital.'
             )
-        })
-
-    capital_insoluto, interes_insoluto, mora_insoluto, deuda_total, _proy = totales_insolutos(prestamo, fecha_pago)
-
-    if deuda_total <= 0:
-        raise serializers.ValidationError({
-            'monto': 'El préstamo ya no tiene deuda pendiente.'
-        })
+        }
+    elif deuda_total <= 0:
+        es_valido = False
+        error = {'monto': 'El préstamo ya no tiene deuda pendiente.'}
 
     # Truncar sobrepago a la deuda total.
-    monto_aplicado = min(monto, deuda_total)
+    monto_aplicado = min(monto, deuda_total) if deuda_total > 0 else Decimal('0.00')
     exceso = monto - monto_aplicado
 
     # Prelación: 1) mora  2) interés corriente  3) capital
@@ -136,11 +142,76 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
     aplicada_interes = _cantidad(aplicada_interes).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     aplicada_capital = _cantidad(aplicada_capital).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
+    saldo_tras_pago = max(Decimal('0.00'), _cantidad(prestamo.saldo_insoluto) - aplicada_capital)
+    mora_restante = max(Decimal('0.00'), mora_insoluto - aplicada_mora)
+    interes_restante = max(Decimal('0.00'), interes_insoluto - aplicada_interes)
+    deuda_tras_pago = saldo_tras_pago + mora_restante + interes_restante
+
+    # Liquidación 50/50 (Ley 977) reflejada en el preview.
+    if aplicada_interes > 0:
+        interes_administracion = (aplicada_interes / 2).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        interes_fondos = aplicada_interes - interes_administracion
+    else:
+        interes_administracion = Decimal('0.00')
+        interes_fondos = Decimal('0.00')
+
+    return {
+        'monto_recibido': monto,
+        'monto_aplicado': monto_aplicado,
+        'exceso_no_aplicado': exceso,
+        'minimo_ciclo': minimo_ciclo,
+        'capital_insoluto': capital_insoluto,
+        'interes_insoluto': interes_insoluto,
+        'mora_insoluto': mora_insoluto,
+        'deuda_total': deuda_total,
+        'aplicacion_mora': aplicada_mora,
+        'aplicacion_interes': aplicada_interes,
+        'aplicacion_capital': aplicada_capital,
+        'interes_administracion': interes_administracion,
+        'interes_fondos': interes_fondos,
+        'saldo_insoluto_tras_pago': saldo_tras_pago,
+        'deuda_tras_pago': deuda_tras_pago,
+        'deuda_liquidada': deuda_tras_pago == 0,
+        'es_valido': es_valido,
+        'error': error,
+    }
+
+
+def simular_pago(prestamo, monto, fecha_pago):
+    """Preview de un abono: desglose de prelación sin persistir nada.
+
+    Permite que la interfaz muestre Mora / Interés / Capital y el nuevo saldo
+    en vivo, con exactamente la misma aritmética que aplica `aplicar_pago`.
+    """
+    validar_tasa(prestamo.tasa_interes)
+    return _prelacion(prestamo, monto, fecha_pago)
+
+
+@transaction.atomic
+def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_bancaria=''):
+    """Asienta un pago con imputación legal (prelación Art. 3180).
+
+    Returns:
+        Pago, dict con 'exceso_no_aplicado'.
+    """
+    validar_tasa(prestamo.tasa_interes)
+
+    calculo = _prelacion(prestamo, monto, fecha_pago)
+    if not calculo['es_valido']:
+        raise serializers.ValidationError(calculo['error'])
+
+    monto = calculo['monto_recibido']
+    monto_aplicado = calculo['monto_aplicado']
+    exceso = calculo['exceso_no_aplicado']
+    aplicada_mora = calculo['aplicacion_mora']
+    aplicada_interes = calculo['aplicacion_interes']
+    aplicada_capital = calculo['aplicacion_capital']
+    mora_restante = max(Decimal('0.00'), calculo['mora_insoluto'] - aplicada_mora)
+    interes_restante = max(Decimal('0.00'), calculo['interes_insoluto'] - aplicada_interes)
+
     prestamo.refresh_from_db()
-    prestamo.saldo_insoluto = max(
-        Decimal('0.00'),
-        _cantidad(prestamo.saldo_insoluto) - aplicada_capital
-    )
+    prestamo.saldo_insoluto = calculo['saldo_insoluto_tras_pago']
 
     pago = Pago(
         prestamo=prestamo,
@@ -162,13 +233,8 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
 
     # ── Liquidación 50/50 (Ley 977) ────────────────────────────────────────
     # Interés corriente pagado → 50% administración, 50% fondos (según Pi).
-    if aplicada_interes > 0:
-        interes_administracion = (aplicada_interes / 2).quantize(
-            Decimal('0.01'), rounding=ROUND_HALF_UP)
-        interes_fondos = aplicada_interes - interes_administracion
-    else:
-        interes_administracion = Decimal('0.00')
-        interes_fondos = Decimal('0.00')
+    interes_administracion = calculo['interes_administracion']
+    interes_fondos = calculo['interes_fondos']
 
     participantes = list(
         prestamo.fondos_detalle.select_related('fondo').order_by('id')
@@ -233,8 +299,6 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
     pago.interes_administracion = interes_administracion
     pago.interes_fondos = interes_fondos
 
-    mora_restante = max(Decimal('0.00'), mora_insoluto - aplicada_mora)
-    interes_restante = max(Decimal('0.00'), interes_insoluto - aplicada_interes)
     deuda_restante = prestamo.saldo_insoluto + mora_restante + interes_restante
 
     if deuda_restante == 0:
