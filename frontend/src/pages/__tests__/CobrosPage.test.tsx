@@ -5,48 +5,101 @@ vi.mock('../../services/api', () => ({
   prestamoService: {
     list: vi.fn(),
     pagar: vi.fn(),
+    previewPago: vi.fn(),
   },
   pagoService: {
     getRecibo: vi.fn(),
   },
+  dashboardService: {
+    resumen: vi.fn(),
+    agenda: vi.fn(),
+    caja: vi.fn(),
+  },
 }));
 
+const useAuth = vi.fn();
 vi.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ user: { rol: 'ADMINISTRADOR' } }),
+  useAuth: () => useAuth(),
 }));
 
 vi.mock('../../components/Layout', () => ({
   Layout: ({ children }: any) => <div data-testid="layout">{children}</div>,
 }));
 
-import { prestamoService, pagoService } from '../../services/api';
+import { prestamoService, pagoService, dashboardService } from '../../services/api';
 import { CobrosPage } from '../CobrosPage';
 
-const PRESTAMOS = [
-  {
-    id: 1,
-    cliente: 1,
-    cliente_nombre: 'Juan Perez - 001-111222-3',
-    monto_principal: '10000.00',
-    saldo_insoluto: '8454.02',
-    saldo_deudor: 8754.02,
-    interes_minimo_ciclo: 253.62,
-    tasa_interes: '0.0300',
-    plazo_meses: 6,
-    periodicidad: 'MENSUAL' as const,
-    estado: 'VIGENTE' as const,
-    proxima_cuota: {
-      fecha_vencimiento: '2026-10-31',
-      cuota: 1845.98,
-      interes: 253.62,
-      capital: 1592.36,
-      periodo: 2,
-    },
-    fondos_detalle: [],
-    total_aportado: 10000,
-    suma_pi: 1,
+const FILA = {
+  id: 1,
+  cliente: 1,
+  cliente_nombre: 'Juan Perez',
+  cliente_direccion: 'Barrio Centro',
+  cliente_telefono: '81234567',
+  estado: 'VIGENTE' as const,
+  estado_efectivo: 'AL_DIA' as const,
+  dias_atraso: 0,
+  dias_gracia: 4,
+  saldo_deudor: '8754.02',
+  saldo_insoluto: '8454.02',
+  cuota: '1845.98',
+  cuota_fecha: '2026-10-31',
+  cuota_periodo: 2,
+  total_periodos: 6,
+  bolsas: [],
+};
+
+const MORA = {
+  ...FILA,
+  id: 2,
+  cliente_nombre: 'Maria Lopez',
+  estado: 'EN_MORA' as const,
+  estado_efectivo: 'EN_MORA' as const,
+  dias_atraso: 9,
+  saldo_deudor: '51250.00',
+  cuota: '4874.36',
+  cuota_periodo: 1,
+};
+
+const AGENDA = {
+  resumen: {
+    cantidad: 2,
+    saldo_total: '60004.02',
+    porcentaje_sano: '50.00',
+    en_mora: 1,
+    en_gracia: 0,
   },
-];
+  filas: [FILA, MORA],
+};
+
+const CAJA = {
+  fecha: '2026-09-26',
+  usuario: 'Cobrador Ruta 1',
+  total_recaudado: '1845.98',
+  recibos_emitidos: 1,
+  por_metodo: { EFECTIVO: { label: 'Efectivo', monto: '1845.98' } },
+  creditos_vigentes: 2,
+};
+
+const PREVIEW = {
+  monto_recibido: '1845.98',
+  monto_aplicado: '1845.98',
+  exceso_no_aplicado: '0.00',
+  minimo_ciclo: '253.62',
+  capital_insoluto: '8454.02',
+  interes_insoluto: '253.62',
+  mora_insoluto: '0.00',
+  deuda_total: '8707.64',
+  aplicacion_mora: '0.00',
+  aplicacion_interes: '253.62',
+  aplicacion_capital: '1592.36',
+  interes_administracion: '0.00',
+  interes_fondos: '0.00',
+  saldo_insoluto_tras_pago: '6861.66',
+  deuda_tras_pago: '7114.28',
+  deuda_liquidada: false,
+  es_valido: true,
+  error: null,
+};
 
 const PAGO_CREADO = {
   id: 10,
@@ -62,69 +115,94 @@ const PAGO_CREADO = {
 
 const RECIBO = {
   ...PAGO_CREADO,
-  prestamo_cliente: 'Juan Perez - 001-111222-3',
+  prestamo_cliente: 'Juan Perez',
   fecha_pago: '2026-10-01',
   metodo_pago: 'EFECTIVO',
   metodo_pago_display: 'Efectivo',
   referencia_bancaria: '',
-  usuario_nombre: 'Admin CAVI',
+  usuario_nombre: 'Cobrador Ruta 1',
   creado_en: '2026-10-01T12:00:00Z',
-  fondos_detalle: [
-    {
-      id: 1,
-      fondo: 1,
-      fondo_nombre: 'Fondo Principal',
-      fondo_familiar: 'Fam Uno',
-      porcentaje_pi: '0.5000',
-      capital_reintegrado: '796.18',
-      ganancia: '63.41',
-    },
-  ],
-  ganancia_administracion: '63.41',
-  saldo_deudor_tras_pago: 7105.28,
+  fondos_detalle: [],
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  (prestamoService.list as any).mockResolvedValue({ results: PRESTAMOS });
+  useAuth.mockReturnValue({ user: { rol: 'COBRANZA' } });
+  (dashboardService.agenda as any).mockResolvedValue(AGENDA);
+  (dashboardService.caja as any).mockResolvedValue(CAJA);
+  (prestamoService.previewPago as any).mockResolvedValue(PREVIEW);
   (pagoService.getRecibo as any).mockResolvedValue(RECIBO);
 });
 
 describe('CobrosPage', () => {
-  it('lista préstamos vigentes con saldo deudor y cuota', async () => {
+  it('muestra la agenda con indicadores y creditos', async () => {
     render(<CobrosPage />);
+
     await waitFor(() => {
-      expect(screen.getByText(/Juan Perez/)).toBeInTheDocument();
-      expect(screen.getByText('C$8,754.02')).toBeInTheDocument();
+      expect(screen.getByText('Juan Perez')).toBeInTheDocument();
     });
-    expect(prestamoService.list).toHaveBeenCalledWith({ estado: 'VIGENTE' });
-    expect(prestamoService.list).toHaveBeenCalledWith({ estado: 'EN_MORA' });
+    expect(screen.getByText('Maria Lopez')).toBeInTheDocument();
+    expect(screen.getByText('Por Cobrar').parentElement?.textContent).toContain('C$60,004.02');
+    expect(screen.getByText('Cobros Hoy').parentElement?.textContent).toContain('C$1,845.98');
+    expect(dashboardService.agenda).toHaveBeenCalled();
+    expect(dashboardService.caja).toHaveBeenCalled();
   });
 
-  it('valida que el monto no sea menor al interés mínimo del ciclo', async () => {
+  it('avisa la restriccion de privacidad al rol cobranza', async () => {
     render(<CobrosPage />);
-    await waitFor(() => screen.getByText(/Juan Perez/));
-
-    fireEvent.click(screen.getByText(/Juan Perez/));
-    const montoInput = screen.getByLabelText('Monto a cobrar (C$)') as HTMLInputElement;
-
-    fireEvent.input(montoInput, { target: { value: '100.00' } });
-    expect(screen.getByText(/pago mínimo aceptado es el interés del ciclo/i)).toBeInTheDocument();
-
-    const continuar = screen.getByRole('button', { name: 'Continuar' }) as HTMLButtonElement;
-    expect(continuar.disabled).toBe(true);
+    await waitFor(() => screen.getByText('Juan Perez'));
+    expect(screen.getByText(/restringida por privacidad/i)).toBeInTheDocument();
   });
 
-  it('registra el cobro en dos toques y muestra el recibo', async () => {
+  it('filtra la agenda por estado', async () => {
+    render(<CobrosPage />);
+    await waitFor(() => screen.getByText('Juan Perez'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'En Mora' }));
+
+    await waitFor(() => expect(screen.queryByText('Juan Perez')).toBeNull());
+    expect(screen.getByText('Maria Lopez')).toBeInTheDocument();
+  });
+
+  it('consulta el preview de prelacion al escribir el monto', async () => {
+    render(<CobrosPage />);
+    await waitFor(() => screen.getByText('Juan Perez'));
+
+    fireEvent.click(screen.getByTestId('cobrar-1'));
+    fireEvent.input(screen.getByLabelText(/Monto a cobrar/), { target: { value: '1845.98' } });
+
+    await waitFor(() => {
+      expect(prestamoService.previewPago).toHaveBeenCalledWith(1, '1845.98');
+    });
+    expect(await screen.findByText('Imputación Art. 3180')).toBeInTheDocument();
+    expect(screen.getByText('C$253.62')).toBeInTheDocument();
+    expect(screen.getByText('C$1,592.36')).toBeInTheDocument();
+  });
+
+  it('bloquea el cobro si el monto es menor al interes del ciclo', async () => {
+    (prestamoService.previewPago as any).mockResolvedValue({ ...PREVIEW, es_valido: false });
+    render(<CobrosPage />);
+    await waitFor(() => screen.getByText('Juan Perez'));
+
+    fireEvent.click(screen.getByTestId('cobrar-1'));
+    fireEvent.input(screen.getByLabelText(/Monto a cobrar/), { target: { value: '10.00' } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/pago mínimo aceptado es el interés del ciclo/i)).toBeInTheDocument();
+    });
+    const confirmar = screen.getByRole('button', { name: 'Confirmar Cobro' }) as HTMLButtonElement;
+    expect(confirmar.disabled).toBe(true);
+  });
+
+  it('registra el cobro y muestra el recibo', async () => {
     (prestamoService.pagar as any).mockResolvedValue(PAGO_CREADO);
     render(<CobrosPage />);
-    await waitFor(() => screen.getByText(/Juan Perez/));
+    await waitFor(() => screen.getByText('Juan Perez'));
 
-    fireEvent.click(screen.getByText(/Juan Perez/));
-    fireEvent.input(screen.getByLabelText('Monto a cobrar (C$)'), { target: { value: '1845.98' } });
+    fireEvent.click(screen.getByTestId('cobrar-1'));
+    fireEvent.input(screen.getByLabelText(/Monto a cobrar/), { target: { value: '1845.98' } });
+    await waitFor(() => expect(screen.getByText('Imputación Art. 3180')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
-    await screen.findByText('Confirmar Cobro');
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar Cobro' }));
 
     await waitFor(() => {
@@ -137,22 +215,36 @@ describe('CobrosPage', () => {
     });
     await waitFor(() => expect(screen.getAllByText(/PAG-00010/).length).toBeGreaterThan(0));
     expect(pagoService.getRecibo).toHaveBeenCalledWith(10);
-    expect(screen.getByText(/Recibido de/)).toBeInTheDocument();
   });
 
   it('exige la referencia bancaria en transferencias', async () => {
     render(<CobrosPage />);
-    await waitFor(() => screen.getByText(/Juan Perez/));
+    await waitFor(() => screen.getByText('Juan Perez'));
 
-    fireEvent.click(screen.getByText(/Juan Perez/));
-    fireEvent.input(screen.getByLabelText('Monto a cobrar (C$)'), { target: { value: '1845.98' } });
-    fireEvent.change(screen.getByLabelText('Método de pago'), { target: { value: 'TRANSFERENCIA' } });
+    fireEvent.click(screen.getByTestId('cobrar-1'));
+    fireEvent.input(screen.getByLabelText(/Monto a cobrar/), { target: { value: '1845.98' } });
+    fireEvent.change(screen.getByLabelText(/Metodo de pago/), { target: { value: 'TRANSFERENCIA' } });
 
-    expect(screen.getByText(/transferencias requieren referencia/i)).toBeInTheDocument();
-    const continuar = screen.getByRole('button', { name: 'Continuar' }) as HTMLButtonElement;
-    expect(continuar.disabled).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByText(/transferencias requieren referencia/i)).toBeInTheDocument();
+    });
+    const confirmar = screen.getByRole('button', { name: 'Confirmar Cobro' }) as HTMLButtonElement;
+    expect(confirmar.disabled).toBe(true);
 
-    fireEvent.input(screen.getByLabelText('Referencia bancaria'), { target: { value: 'REF-777' } });
-    expect((screen.getByRole('button', { name: 'Continuar' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.input(screen.getByLabelText(/Referencia bancaria/), { target: { value: 'REF-777' } });
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Confirmar Cobro' }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it('muestra mi caja con el desglose por metodo de pago', async () => {
+    render(<CobrosPage />);
+    await waitFor(() => screen.getByText('Juan Perez'));
+
+    fireEvent.click(screen.getByRole('button', { name: /Mi Caja/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Recaudos de hoy')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/recibos emitidos por Cobrador Ruta 1/)).toBeInTheDocument();
+    expect(screen.getByText('Efectivo')).toBeInTheDocument();
   });
 });

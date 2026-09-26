@@ -48,6 +48,7 @@ export type IconName =
   | 'shield'
   | 'signal_cellular_4_bar'
   | 'sync'
+  | 'task_alt'
   | 'tune'
   | 'verified'
   | 'verified_user'
