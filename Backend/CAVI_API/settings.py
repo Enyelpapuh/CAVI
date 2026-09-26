@@ -195,3 +195,7 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+# Límite legal de tasa de interés mensual (Ley 176 / BCN). Usura si lo supera.
+from decimal import Decimal
+TASA_MAXIMA_LEGAL = Decimal(str(os.getenv('TASA_MAXIMA_LEGAL', '0.0300')))

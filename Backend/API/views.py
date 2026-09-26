@@ -14,6 +14,7 @@ from .serializers import (
     RetiroFondoSerializer, MovimientoFondoSerializer,
     PrestamoSerializer, PrestamoCreateSerializer, PrestamoFondoDetalleSerializer
 )
+from .services.amortizacion import generar_proyeccion, validar_tasa
 
 Usuario = get_user_model()
 
@@ -230,3 +231,10 @@ class PrestamoViewSet(viewsets.ModelViewSet):
 
         output_serializer = PrestamoSerializer(prestamo)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def amortizacion(self, request, pk=None):
+        """Proyección de cuotas con interés sobre saldo insoluto (Ley 176)."""
+        prestamo = self.get_object()
+        validar_tasa(prestamo.tasa_interes)
+        return Response(generar_proyeccion(prestamo))
