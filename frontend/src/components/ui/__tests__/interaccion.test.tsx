@@ -1,0 +1,85 @@
+import { render, screen, fireEvent, act } from '@testing-library/preact';
+import { describe, it, expect, vi } from 'vitest';
+import { ToastProvider, useToast } from '../Toast';
+import { Modal } from '../Modal';
+import { Input } from '../Field';
+
+function Disparador() {
+  const toast = useToast();
+  return (
+    <button type="button" onClick={() => toast.success('Pago registrado')}>
+      Confirmar
+    </button>
+  );
+}
+
+describe('Toast', () => {
+  it('muestra la notificacion y permite descartarla', () => {
+    render(
+      <ToastProvider>
+        <Disparador />
+      </ToastProvider>
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByText('Confirmar'));
+    });
+    expect(screen.getByText('Pago registrado')).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByLabelText('Cerrar notificacion'));
+    });
+    expect(screen.queryByText('Pago registrado')).not.toBeInTheDocument();
+  });
+});
+
+describe('Modal', () => {
+  it('no renderiza nada cuando esta cerrado', () => {
+    render(
+      <Modal open={false} onClose={vi.fn()} title="Registrar Abono">
+        Contenido
+      </Modal>
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('expone dialogo modal y cierra con Escape', () => {
+    const onClose = vi.fn();
+    render(
+      <Modal open onClose={onClose} title="Registrar Abono" icon="paid">
+        <p>Contenido</p>
+      </Modal>
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Registrar Abono' })).toBeInTheDocument();
+    act(() => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('Input', () => {
+  it('asocia etiqueta, prefijo de moneda y error al control', () => {
+    const onInput = vi.fn();
+    render(
+      <Input
+        label="Monto aicionar"
+        value=""
+        onInput={onInput}
+        prefix="C$"
+        error="El monto es menor al minimo legal"
+        required
+        data-testid="monto"
+      />
+    );
+
+    const campo = screen.getByLabelText(/Monto aicionar/);
+    expect(campo).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('El monto es menor al minimo legal')).toBeInTheDocument();
+    expect(screen.getByText('C$')).toBeInTheDocument();
+
+    fireEvent.input(campo, { target: { value: '1845.98' } });
+    expect(onInput).toHaveBeenCalledWith('1845.98');
+  });
+});

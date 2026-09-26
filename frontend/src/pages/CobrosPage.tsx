@@ -4,14 +4,7 @@ import { PagoRecibo } from '../components/PagoRecibo';
 import { prestamoService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import type { Prestamo, Pago } from '../types';
-
-const fmtMonto = (value: number | string): string => {
-  return new Intl.NumberFormat('es-NI', {
-    style: 'currency',
-    currency: 'NIO',
-    minimumFractionDigits: 2,
-  }).format(Number(value) || 0);
-};
+import { fmtMonto } from '../lib/format';
 
 const fmtFecha = (value: string): string => {
   if (!value) return '';

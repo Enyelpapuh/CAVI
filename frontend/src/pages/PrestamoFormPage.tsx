@@ -2,14 +2,7 @@ import { useState, useEffect, useMemo } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { clienteService, fondoService, prestamoService } from '../services/api';
 import type { Cliente, Fondo } from '../types';
-
-const fmtMonto = (value: number | string): string => {
-  return new Intl.NumberFormat('es-NI', {
-    style: 'currency',
-    currency: 'NIO',
-    minimumFractionDigits: 2,
-  }).format(Number(value) || 0);
-};
+import { fmtMonto } from '../lib/format';
 
 interface FondoAporte {
   monto_aportado: string;

@@ -2,14 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { fondoService } from '../services/api';
 import type { Fondo, MovimientoFondo } from '../types';
-
-const fmtMonto = (value: string | number): string => {
-  return new Intl.NumberFormat('es-NI', {
-    style: 'currency',
-    currency: 'NIO',
-    minimumFractionDigits: 2,
-  }).format(Number(value) || 0);
-};
+import { fmtMonto } from '../lib/format';
 
 const tipoBadgeClass: Record<string, string> = {
   INYECCION: 'bg-green-100 text-green-800',
