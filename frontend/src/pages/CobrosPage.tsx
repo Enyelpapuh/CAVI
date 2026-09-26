@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'preact/hooks';
 import { Layout } from '../components/Layout';
+import { PagoRecibo } from '../components/PagoRecibo';
 import { prestamoService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import type { Prestamo, Pago } from '../types';
@@ -235,7 +236,7 @@ export function CobrosPage() {
             <div class="flex min-h-full items-end sm:items-center justify-center p-0 sm:p-4">
               <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={cerrarModal} />
 
-              {paso.tipo !== 'recibo' ? (
+              {paso.tipo !== 'recibo' && (
                 <div class="relative bg-white rounded-t-xl sm:rounded-lg shadow-xl max-w-lg w-full p-6">
                   <div class="flex items-start justify-between mb-4">
                     <div>
@@ -381,51 +382,9 @@ export function CobrosPage() {
                     </div>
                   )}
                 </div>
-              ) : (
-                <div class="relative bg-white rounded-t-xl sm:rounded-lg shadow-xl max-w-lg w-full p-6">
-                  <div class="text-center">
-                    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                      <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <h3 class="mt-4 text-lg font-medium text-gray-900">Cobro registrado</h3>
-                    <p class="mt-1 text-sm text-gray-500">
-                      {pago?.codigo_comprobante} · {fmtMonto(pago?.monto_total ?? 0)}
-                    </p>
-                    {Number(pago?.exceso_no_aplicado || 0) > 0 && (
-                      <p class="mt-2 text-xs text-orange-700 bg-orange-50 rounded-md px-3 py-2 inline-block">
-                        El excedente de {fmtMonto(pago?.exceso_no_aplicado ?? 0)} no fue aplicado por superar la deuda.
-                      </p>
-                    )}
-                  </div>
-                  <div class="mt-6 grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p class="text-gray-500">Amortización capital</p>
-                      <p class="font-medium text-gray-900">{fmtMonto(pago?.aplicacion_capital ?? 0)}</p>
-                    </div>
-                    <div>
-                      <p class="text-gray-500">Interés corriente</p>
-                      <p class="font-medium text-gray-900">{fmtMonto(pago?.aplicacion_interes ?? 0)}</p>
-                    </div>
-                    <div>
-                      <p class="text-gray-500">Mora</p>
-                      <p class="font-medium text-gray-900">{fmtMonto(pago?.aplicacion_mora ?? 0)}</p>
-                    </div>
-                    <div>
-                      <p class="text-gray-500">Saldo insoluto (capital)</p>
-                      <p class="font-medium text-gray-900">{fmtMonto(pago?.saldo_insoluto_tras_pago ?? selected.saldo_insoluto)}</p>
-                    </div>
-                  </div>
-                  <div class="mt-6 flex justify-center space-x-3">
-                    <button
-                      onClick={cerrarModal}
-                      class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      Registrar otro cobro
-                    </button>
-                  </div>
-                </div>
+              )}
+              {paso.tipo === 'recibo' && pago && (
+                <PagoRecibo pagoId={pago.id} onClose={cerrarModal} />
               )}
             </div>
           </div>

@@ -6,6 +6,9 @@ vi.mock('../../services/api', () => ({
     list: vi.fn(),
     pagar: vi.fn(),
   },
+  pagoService: {
+    getRecibo: vi.fn(),
+  },
 }));
 
 vi.mock('../../context/AuthContext', () => ({
@@ -16,7 +19,7 @@ vi.mock('../../components/Layout', () => ({
   Layout: ({ children }: any) => <div data-testid="layout">{children}</div>,
 }));
 
-import { prestamoService } from '../../services/api';
+import { prestamoService, pagoService } from '../../services/api';
 import { CobrosPage } from '../CobrosPage';
 
 const PRESTAMOS = [
@@ -57,9 +60,34 @@ const PAGO_CREADO = {
   exceso_no_aplicado: '0',
 };
 
+const RECIBO = {
+  ...PAGO_CREADO,
+  prestamo_cliente: 'Juan Perez - 001-111222-3',
+  fecha_pago: '2026-10-01',
+  metodo_pago: 'EFECTIVO',
+  metodo_pago_display: 'Efectivo',
+  referencia_bancaria: '',
+  usuario_nombre: 'Admin CAVI',
+  creado_en: '2026-10-01T12:00:00Z',
+  fondos_detalle: [
+    {
+      id: 1,
+      fondo: 1,
+      fondo_nombre: 'Fondo Principal',
+      fondo_familiar: 'Fam Uno',
+      porcentaje_pi: '0.5000',
+      capital_reintegrado: '796.18',
+      ganancia: '63.41',
+    },
+  ],
+  ganancia_administracion: '63.41',
+  saldo_deudor_tras_pago: 7105.28,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   (prestamoService.list as any).mockResolvedValue({ results: PRESTAMOS });
+  (pagoService.getRecibo as any).mockResolvedValue(RECIBO);
 });
 
 describe('CobrosPage', () => {
@@ -87,7 +115,7 @@ describe('CobrosPage', () => {
     expect(continuar.disabled).toBe(true);
   });
 
-  it('registra el cobro en dos toques y muestra resumen', async () => {
+  it('registra el cobro en dos toques y muestra el recibo', async () => {
     (prestamoService.pagar as any).mockResolvedValue(PAGO_CREADO);
     render(<CobrosPage />);
     await waitFor(() => screen.getByText(/Juan Perez/));
@@ -107,8 +135,9 @@ describe('CobrosPage', () => {
         referencia_bancaria: '',
       });
     });
-    await waitFor(() => expect(screen.getByText(/Cobro registrado/)).toBeInTheDocument());
-    expect(screen.getByText(/PAG-00010/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText(/PAG-00010/).length).toBeGreaterThan(0));
+    expect(pagoService.getRecibo).toHaveBeenCalledWith(10);
+    expect(screen.getByText(/Recibido de/)).toBeInTheDocument();
   });
 
   it('exige la referencia bancaria en transferencias', async () => {

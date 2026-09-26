@@ -14,3 +14,14 @@ body {
 #root {
   min-height: 100vh;
 }
+
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}
