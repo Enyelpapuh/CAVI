@@ -219,6 +219,56 @@ class TestLiquidacion50y50:
         assert prestamo.estado == Prestamo.Estado.CANCELADO
 
 
+class TestAtomicidadYConsistencia:
+    def test_fallo_a_mitad_de_liquidacion_revierte_todo(self, auth_client, prestamo_vigente, monkeypatch):
+        """Si falla la trazabilidad/reintegro, el pago entero se revierte (ROBUSTEZ)."""
+        from API.services import pagos as pagos_service
+
+        fondo = prestamo_vigente.fondos_detalle.get().fondo
+        saldo_fondo = fondo.saldo_disponible
+        ganancias_fondo = fondo.ganancias_acumuladas
+        pago_id = None
+
+        def reventar_create(*args, **kwargs):
+            raise RuntimeError('fallo inyectado en movimientos')
+
+        monkeypatch.setattr(
+            pagos_service.MovimientoFondo.objects, 'create', reventar_create)
+
+        with pytest.raises(RuntimeError):
+            auth_client.post(
+                PAGO_URL.format(id=prestamo_vigente.id),
+                pago_payload('1845.98'), format='json')
+
+        assert Pago.objects.count() == 0
+        assert MovimientoFondo.objects.filter(pago__isnull=False).count() == 0
+
+        prestamo_vigente.refresh_from_db()
+        assert prestamo_vigente.saldo_insoluto == Decimal('10000.00')
+        assert prestamo_vigente.estado == Prestamo.Estado.VIGENTE
+
+        fondo.refresh_from_db()
+        assert fondo.saldo_disponible == saldo_fondo
+        assert fondo.ganancias_acumuladas == ganancias_fondo
+
+    def test_pagos_divididos_del_mismo_corte_no_duplican_interes(
+            self, auth_client, prestamo_vigente):
+        """Dos abonos en fecha de corte: el 2º no vuelve a cobrar interés del corte."""
+        r1 = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('300.00', '2026-10-01'), format='json')
+        assert r1.status_code == 201
+        assert r1.data['aplicacion_interes'] == '300.00'
+        assert r1.data['aplicacion_capital'] == '0.00'
+
+        # El siguiente abono cubre solo capital (el interés del corte ya está pagado).
+        r2 = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('1545.98', '2026-10-01'), format='json')
+        assert r2.status_code == 201
+        assert r2.data['aplicacion_interes'] == '0.00'
+        assert r2.data['aplicacion_capital'] == '1545.98'
+
+        prestamo_vigente.refresh_from_db()
+        assert str(prestamo_vigente.saldo_insoluto) == '8454.02'
+
+
 class TestRecibo:
     def test_recibo_serializa_detalle_y_ganancias(self, auth_client, prestamo_vigente):
         creado = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('1845.98'), format='json')

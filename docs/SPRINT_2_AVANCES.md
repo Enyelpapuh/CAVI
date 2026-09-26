@@ -14,9 +14,9 @@
 | CAVI-TK15 | Motor de amortización interés sobre saldo insoluto (Ley 176) | 6h | ✅ Completado | 100% | Cuota constante francesa, tope usura BCN configurable (`.env` TASA_MAXIMA_LEGAL, default 0.0300), prohibición anatocismo, MENSUAL/QUINCENAL, último período ajusta saldo a 0. Endpoint GET /api/prestamos/{id}/amortizacion/. | 2026-09-26 | - |
 | CAVI-TK16 | Algoritmo de imputación de pagos (Art. 3180 Código Civil) | 5h | ✅ Completado | 100% | Prelación mora→interés corriente→capital, bloqueo 400 si pago < interés mínimo del ciclo vencido, truncado de sobrepagos a la deuda, CANCELADO automático al saldo 0. Código único PAG-XXXXX. Modelo Pago + migración 0003 + saldo_insoluto (backfill). Serializer role-aware: COBRANZA no ve fondos/utilidades (Ley 787). 10 tests pytest nuevos. | 2026-09-26 | - |
 | CAVI-TK17 | Transacción de liquidación 50/50 y trazabilidad (Ley 977) | 6h | ✅ Completado | 100% | 50% interés → GananciaAdministracion, 50% → fondos según Pi; reintegro capital por Pi con saldo_disponible/ganancias; movimientos GANANCIA/REINTEGRO con pago FK (rastro immutable UAF); PagoFondoDetalle. GET /api/pagos/{id}/ recibo. 5 tests nuevos (total 38). | 2026-09-26 | - |
-| CAVI-TK18 | Pantalla móvil de asentamiento de cobros + privacidad (Ley 787) | 6h | ⏳ Pendiente | 0% | Flujo ≤4 toques, rol COBRANZA oculta utilidades/fondos. | - | - |
-| CAVI-TK19 | Componente recibo digital de pago (Ley 842) | 4h | ⏳ Pendiente | 0% | Desglose, código único, imprimir PDF. | - | - |
-| CAVI-TK20 | Pruebas integración consistencia decimal en pagos parciales | 5h | ⏳ Pendiente | 0% | pytest + vitest. | - | - |
+| CAVI-TK18 | Pantalla móvil de asentamiento de cobros + privacidad (Ley 787) | 6h | ✅ Completado | 100% | CobrosPage móvil (≤4 toques), lista vigentes/EN_MORA, validación monto ≥ interés mínimo (Art. 3180), modal confirmar, integración PagoRecibo; rol COBRANZA ve vista con privacidad (no utilidades/fondos). | 2026-09-26 | efafc4b |
+| CAVI-TK19 | Componente recibo digital de pago (Ley 842) | 4h | ✅ Completado | 100% | PagoRecibo con desglose capital/interés/mora/excedente, liquidación 50/50 + reintegro fondos (ocultos a COBRANZA), monto en letras, impresión/PDF con CSS @media print, test vitest 18/18. | 2026-09-26 | af29a93 |
+| CAVI-TK20 | Pruebas integración consistencia decimal en pagos parciales | 5h | ✅ Completado | 100% | test_amortizacion.py (usura, cuota constante, sin anatocismo, MENSUAL/QUINCENAL, cierra 0, identidad principal+intereses). test_pagos.py: atomicidad/rollback con monkeypatch (reversión completa), pagos divididos mismo corte no duplican interés, consistencia decimal. Total backend 48 tests pasan. | 2026-09-26 | (commits locales) |
 
 ---
 
@@ -146,5 +146,4 @@ El recibo (PagoReciboSerializer) oculta para rol **COBRANZA**: `fondos_detalle`,
 
 ## Próximos Pasos
 
-1. **TK18-TK19:** Frontend de cobros (CobrosPage móvil) y recibo digital (Ley 842).
-2. **TK20:** Pruebas de integración de consistencia decimal en pagos parciales.
+1. **Sprint 2 100% completo.** Backend 48/48 pytest, Frontend 18/18 vitest. Listo para push y continuar con Sprint 3 (generación automática de mora).

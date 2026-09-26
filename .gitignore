@@ -34,8 +34,7 @@ htmlcov/
 .tox/
 
 # Documentation
-# docs/  # Comentado para trackear avances
-
+stitch_cavi_microcr_ditos_platform/
 # Frontend
 frontend/node_modules/
 frontend/dist/

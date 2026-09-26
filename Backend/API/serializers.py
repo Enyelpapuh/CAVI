@@ -5,6 +5,7 @@ from .models import (
     PrestamoFondoDetalle, Pago, PagoFondoDetalle, GananciaAdministracion,
 )
 from .services.pagos import totales_insolutos, interes_minimo_vencido
+from .services.amortizacion import validar_tasa
 from django.utils import timezone
 from decimal import Decimal
 
@@ -211,6 +212,7 @@ class PrestamoCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
     def validate(self, attrs):
+        validar_tasa(attrs['tasa_interes'])
         fondos_detalle = attrs.get('fondos_detalle', [])
         if not fondos_detalle:
             raise serializers.ValidationError({"fondos_detalle": "Debe especificar al menos un fondo aportante."})
