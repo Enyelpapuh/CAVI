@@ -74,6 +74,9 @@ export interface Prestamo {
     capital: number;
     periodo: number;
   } | null;
+  dias_atraso: number;
+  dias_gracia: number;
+  estado_efectivo: EstadoEfectivo;
   tasa_interes: string;
   plazo_meses: number;
   periodicidad: 'MENSUAL' | 'QUINCENAL';
@@ -85,6 +88,89 @@ export interface Prestamo {
   fondos_detalle: PrestamoFondoDetalle[];
   total_aportado: number;
   suma_pi: number;
+}
+
+export type EstadoEfectivo = 'AL_DIA' | 'EN_GRACIA' | 'EN_MORA' | 'CANCELADO';
+
+/** Fila de la tabla de cartera del panel de control (agregado del backend). */
+export interface CarteraFila {
+  id: number;
+  cliente: number;
+  cliente_nombre: string;
+  cliente_direccion: string;
+  cliente_telefono: string;
+  estado: 'VIGENTE' | 'EN_GRACIA' | 'EN_MORA' | 'CANCELADO';
+  estado_efectivo: EstadoEfectivo;
+  dias_atraso: number;
+  dias_gracia: number;
+  saldo_deudor: string;
+  saldo_insoluto: string;
+  cuota: string | null;
+  cuota_fecha: string | null;
+  cuota_periodo: number | null;
+  total_periodos: number;
+  /** Vacío para el rol COBRANZA (privacidad Ley 787). */
+  bolsas: { id: number; nombre: string; porcentaje_pi: string }[];
+}
+
+export interface ResumenCartera {
+  cantidad: number;
+  saldo_total: string;
+  porcentaje_sano: string;
+  en_mora: number;
+  en_gracia: number;
+  filas: CarteraFila[];
+}
+
+export interface Dashboard {
+  fecha: string;
+  clientes_activos: number;
+  bolsas: { cantidad: number; capital_en_calle: string };
+  creditos_vigentes: {
+    cantidad: number;
+    saldo_total: string;
+    porcentaje_sano: string;
+    en_mora: number;
+    en_gracia: number;
+  };
+  abonos_del_dia: { monto: string; cantidad: number };
+  cartera: CarteraFila[];
+}
+
+export interface CajaCobrador {
+  fecha: string;
+  usuario: string;
+  total_recaudado: string;
+  recibos_emitidos: number;
+  por_metodo: Record<string, { label: string; monto: string }>;
+  creditos_vigentes: number;
+}
+
+export interface AgendaCobrador {
+  resumen: Omit<ResumenCartera, 'filas'>;
+  filas: CarteraFila[];
+}
+
+/** Desglose de prelación calculado sin asentar el pago (Art. 3180). */
+export interface PreviewPago {
+  monto_recibido: string;
+  monto_aplicado: string;
+  exceso_no_aplicado: string;
+  minimo_ciclo: string;
+  capital_insoluto: string;
+  interes_insoluto: string;
+  mora_insoluto: string;
+  deuda_total: string;
+  aplicacion_mora: string;
+  aplicacion_interes: string;
+  aplicacion_capital: string;
+  interes_administracion: string;
+  interes_fondos: string;
+  saldo_insoluto_tras_pago: string;
+  deuda_tras_pago: string;
+  deuda_liquidada: boolean;
+  es_valido: boolean;
+  error: { monto?: string } | null;
 }
 
 export interface Pago {

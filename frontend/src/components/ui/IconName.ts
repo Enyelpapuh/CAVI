@@ -42,6 +42,7 @@ export type IconName =
   | 'query_stats'
   | 'receipt_long'
   | 'savings'
+  | 'schedule'
   | 'search'
   | 'settings'
   | 'shield'

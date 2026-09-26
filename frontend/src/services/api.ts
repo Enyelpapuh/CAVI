@@ -1,5 +1,18 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import type { AuthTokens, ApiError, LoginCredentials, Cliente, Fondo, Prestamo, Pago, Proyeccion } from '../types';
+import type {
+  AuthTokens,
+  ApiError,
+  LoginCredentials,
+  Cliente,
+  Fondo,
+  Prestamo,
+  Pago,
+  Proyeccion,
+  PreviewPago,
+  Dashboard,
+  CajaCobrador,
+  AgendaCobrador,
+} from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -203,6 +216,24 @@ export const prestamoService = {
     return response.data;
   },
 
+  /** Simula la cuota de un crédito SIN persistirlo (cotizador del panel). */
+  simular: async (data: {
+    monto_principal: string;
+    tasa_interes: string;
+    plazo_meses: number;
+    periodicidad: 'MENSUAL' | 'QUINCENAL';
+    fecha_primer_corte?: string;
+  }): Promise<Proyeccion> => {
+    const response = await api.post('/prestamos/simular/', data);
+    return response.data;
+  },
+
+  /** Desglose de prelación del Art. 3180 sin asentar el pago. */
+  previewPago: async (id: number, monto: string): Promise<PreviewPago> => {
+    const response = await api.post(`/prestamos/${id}/preview_pago/`, { monto });
+    return response.data;
+  },
+
   pagar: async (
     id: number,
     data: {
@@ -221,6 +252,27 @@ export const prestamoService = {
 export const pagoService = {
   getRecibo: async (id: number): Promise<Pago> => {
     const response = await api.get(`/pagos/${id}/`);
+    return response.data;
+  },
+};
+
+// Dashboard endpoints
+export const dashboardService = {
+  /** Solo ADMINISTRADOR: agregados de cartera, bolsas y abonos del dia. */
+  resumen: async (): Promise<Dashboard> => {
+    const response = await api.get('/dashboard/');
+    return response.data;
+  },
+
+  /** Cualquier autenticado: recaudos propios del usuario (Ley 787). */
+  caja: async (fecha?: string): Promise<CajaCobrador> => {
+    const response = await api.get('/dashboard/caja/', { params: fecha ? { fecha } : undefined });
+    return response.data;
+  },
+
+  /** Agenda de cobranza: sin detalle Pi ni montos de fondos. */
+  agenda: async (params?: { search?: string }): Promise<AgendaCobrador> => {
+    const response = await api.get('/dashboard/agenda/', { params });
     return response.data;
   },
 };

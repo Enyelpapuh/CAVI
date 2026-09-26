@@ -1,6 +1,7 @@
 import { Router } from 'preact-router';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { ClientesPage } from './pages/ClientesPage';
 import { FondosPage } from './pages/FondosPage';
 import { PrestamoFormPage } from './pages/PrestamoFormPage';
@@ -28,7 +29,8 @@ function Routes() {
         <ProtectedRoute path="/prestamos/nuevo" component={PrestamoFormPage} requireAuth={true} />
         <ProtectedRoute path="/cobros" component={CobrosPage} requireAuth={true} />
         <ProtectedRoute path="/login" component={LoginPage} requireAuth={false} />
-        <ProtectedRoute path="/" component={ClientesPage} requireAuth={true} default />
+        <ProtectedRoute path="/dashboard" component={DashboardPage} requireAuth={true} />
+        <ProtectedRoute path="/" component={DashboardPage} requireAuth={true} default />
       </Router>
     </ToastProvider>
   );
