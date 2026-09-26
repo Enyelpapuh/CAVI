@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ClientesPage } from './pages/ClientesPage';
 import { FondosPage } from './pages/FondosPage';
 import { PrestamoFormPage } from './pages/PrestamoFormPage';
+import { CobrosPage } from './pages/CobrosPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import './index.css';
 
@@ -23,6 +24,7 @@ function Routes() {
       <ProtectedRoute path="/clientes" component={ClientesPage} requireAuth={true} />
       <ProtectedRoute path="/fondos" component={FondosPage} requireAuth={true} />
       <ProtectedRoute path="/prestamos/nuevo" component={PrestamoFormPage} requireAuth={true} />
+      <ProtectedRoute path="/cobros" component={CobrosPage} requireAuth={true} />
       <ProtectedRoute path="/login" component={LoginPage} requireAuth={false} />
       <ProtectedRoute path="/" component={ClientesPage} requireAuth={true} default />
     </Router>

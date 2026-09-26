@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import type { AuthTokens, ApiError, LoginCredentials, Cliente, Fondo, Prestamo } from '../types';
+import type { AuthTokens, ApiError, LoginCredentials, Cliente, Fondo, Prestamo, Pago, Proyeccion } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -195,6 +195,32 @@ export const prestamoService = {
 
   get: async (id: number): Promise<Prestamo> => {
     const response = await api.get(`/prestamos/${id}/`);
+    return response.data;
+  },
+
+  amortizacion: async (id: number): Promise<Proyeccion> => {
+    const response = await api.get(`/prestamos/${id}/amortizacion/`);
+    return response.data;
+  },
+
+  pagar: async (
+    id: number,
+    data: {
+      monto: string;
+      fecha_pago: string;
+      metodo_pago: string;
+      referencia_bancaria?: string;
+    }
+  ): Promise<Pago> => {
+    const response = await api.post(`/prestamos/${id}/pagos/`, data);
+    return response.data;
+  },
+};
+
+// Pago endpoints
+export const pagoService = {
+  getRecibo: async (id: number): Promise<Pago> => {
+    const response = await api.get(`/pagos/${id}/`);
     return response.data;
   },
 };

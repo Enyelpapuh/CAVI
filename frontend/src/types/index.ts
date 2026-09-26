@@ -64,6 +64,16 @@ export interface Prestamo {
   cliente: number;
   cliente_nombre: string;
   monto_principal: string;
+  saldo_insoluto: string;
+  saldo_deudor: number;
+  interes_minimo_ciclo: number;
+  proxima_cuota: {
+    fecha_vencimiento: string;
+    cuota: number;
+    interes: number;
+    capital: number;
+    periodo: number;
+  } | null;
   tasa_interes: string;
   plazo_meses: number;
   periodicidad: 'MENSUAL' | 'QUINCENAL';
@@ -75,6 +85,63 @@ export interface Prestamo {
   fondos_detalle: PrestamoFondoDetalle[];
   total_aportado: number;
   suma_pi: number;
+}
+
+export interface Pago {
+  id: number;
+  codigo_comprobante: string;
+  prestamo: number;
+  prestamo_cliente: string;
+  prestamo_monto: string;
+  monto_total: string;
+  fecha_pago: string;
+  metodo_pago: 'EFECTIVO' | 'TRANSFERENCIA' | 'CHEQUE' | 'OTRO';
+  metodo_pago_display: string;
+  referencia_bancaria: string;
+  aplicacion_mora: string;
+  aplicacion_interes: string;
+  aplicacion_capital: string;
+  interes_administracion?: string;
+  interes_fondos?: string;
+  saldo_insoluto_tras_pago: string;
+  saldo_deudor_tras_pago?: number;
+  usuario_nombre: string;
+  creado_en: string;
+  exceso_no_aplicado?: string;
+  fondos_detalle?: PagoFondoDetalle[];
+  ganancia_administracion?: number;
+}
+
+export interface PagoFondoDetalle {
+  id: number;
+  fondo: number;
+  fondo_nombre: string;
+  fondo_familiar: string;
+  porcentaje_pi: string;
+  capital_reintegrado: string;
+  ganancia: string;
+}
+
+export interface PeriodoCuota {
+  periodo: number;
+  fecha_vencimiento: string;
+  cuota: number;
+  interes: number;
+  capital: number;
+  saldo_insoluto: number;
+}
+
+export interface Proyeccion {
+  prestamo: number;
+  cliente: number;
+  monto_principal: string;
+  tasa_periodica: string;
+  periodicidad: 'MENSUAL' | 'QUINCENAL';
+  plazo_meses: number;
+  total_periodos: number;
+  total_interes: string;
+  total_cuotas: string;
+  periodos: PeriodoCuota[];
 }
 
 export interface PaginatedResponse<T> {
