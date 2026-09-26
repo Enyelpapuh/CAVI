@@ -68,7 +68,7 @@ export function ToastProvider({ children }: { children: ComponentChildren }) {
               <p class="flex-1 pt-1 text-body-md text-slate-800">{toast.mensaje}</p>
               <button
                 type="button"
-                aria-label="Cerrar notificacion"
+                aria-label="Cerrar notificación"
                 onClick={(event) => {
                   event.stopPropagation();
                   setToasts((previos) => previos.filter((t) => t.id !== toast.id));

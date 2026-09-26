@@ -6,6 +6,7 @@ import { FondosPage } from './pages/FondosPage';
 import { PrestamoFormPage } from './pages/PrestamoFormPage';
 import { CobrosPage } from './pages/CobrosPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { Spinner, ToastProvider } from './components/ui';
 import './index.css';
 
 function Routes() {
@@ -13,21 +14,23 @@ function Routes() {
 
   if (isLoading) {
     return (
-      <div class="min-h-screen flex items-center justify-center bg-gray-50">
-        <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+      <div class="flex min-h-screen items-center justify-center bg-slate-50">
+        <Spinner size={48} />
       </div>
     );
   }
 
   return (
-    <Router>
-      <ProtectedRoute path="/clientes" component={ClientesPage} requireAuth={true} />
-      <ProtectedRoute path="/fondos" component={FondosPage} requireAuth={true} />
-      <ProtectedRoute path="/prestamos/nuevo" component={PrestamoFormPage} requireAuth={true} />
-      <ProtectedRoute path="/cobros" component={CobrosPage} requireAuth={true} />
-      <ProtectedRoute path="/login" component={LoginPage} requireAuth={false} />
-      <ProtectedRoute path="/" component={ClientesPage} requireAuth={true} default />
-    </Router>
+    <ToastProvider>
+      <Router>
+        <ProtectedRoute path="/clientes" component={ClientesPage} requireAuth={true} />
+        <ProtectedRoute path="/fondos" component={FondosPage} requireAuth={true} />
+        <ProtectedRoute path="/prestamos/nuevo" component={PrestamoFormPage} requireAuth={true} />
+        <ProtectedRoute path="/cobros" component={CobrosPage} requireAuth={true} />
+        <ProtectedRoute path="/login" component={LoginPage} requireAuth={false} />
+        <ProtectedRoute path="/" component={ClientesPage} requireAuth={true} default />
+      </Router>
+    </ToastProvider>
   );
 }
 

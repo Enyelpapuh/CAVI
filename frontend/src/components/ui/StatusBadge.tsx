@@ -8,7 +8,7 @@ interface ConfiguracionEstado {
 
 const ESTADOS: Record<EstadoEfectivo, ConfiguracionEstado> = {
   AL_DIA: {
-    label: 'Al Dia',
+    label: 'Al Día',
     clases: 'bg-green-50 text-green-600 border-green-200',
     punto: 'bg-green-600',
   },

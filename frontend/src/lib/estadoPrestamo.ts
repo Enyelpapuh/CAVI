@@ -9,7 +9,7 @@ export type EstadoEfectivo = 'AL_DIA' | 'EN_GRACIA' | 'EN_MORA' | 'CANCELADO';
 /**
  * Deriva el estado efectivo de un prestamo.
  * El Sprint 3 agregara el generador de mora que persiste EN_MORA; mientras tanto
- * `diasAtraso` permite mostrar Al Dia / En Gracia / En Mora sin cobrar mora.
+ * `diasAtraso` permite mostrar Al Día / En Gracia / En Mora sin cobrar mora.
  */
 export function evaluarEstado(
   estado: EstadoPrestamo,

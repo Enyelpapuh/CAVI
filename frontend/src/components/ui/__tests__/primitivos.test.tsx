@@ -5,9 +5,9 @@ import { Icon } from '../Icon';
 import { KpiTile } from '../KpiTile';
 
 describe('StatusBadge', () => {
-  it('muestra Al Dia con punto verde para un prestamo vigente sin atraso', () => {
+  it('muestra Al Día con punto verde para un préstamo vigente sin atraso', () => {
     render(<StatusBadge estado="VIGENTE" diasAtraso={0} />);
-    expect(screen.getByText('Al Dia')).toBeInTheDocument();
+    expect(screen.getByText('Al Día')).toBeInTheDocument();
   });
 
   it('muestra En Gracia dentro de los 4 dias y En Mora despues', () => {
@@ -19,7 +19,7 @@ describe('StatusBadge', () => {
     expect(screen.getByText('En Mora (5d)')).toBeInTheDocument();
   });
 
-  it('muestra Liquidado para prestamos cancelados', () => {
+  it('muestra Liquidado para préstamos cancelados', () => {
     render(<StatusBadge estado="CANCELADO" />);
     expect(screen.getByText('Liquidado')).toBeInTheDocument();
   });

@@ -2,44 +2,41 @@ import type { ComponentChildren } from 'preact';
 import { Icon } from './Icon';
 import type { IconName } from './IconName';
 
-type Tono = 'default' | 'success' | 'warning' | 'danger' | 'neutral';
+export type TonoKpi = 'ambar' | 'indigo' | 'esmeralda' | 'rosa' | 'neutro';
 
-const TONES: Record<Tono, { fondo: string; icono: string }> = {
-  default: { fondo: 'from-green-50 to-emerald-50/30', icono: 'text-green-600 bg-green-100' },
-  success: { fondo: 'from-green-50 to-emerald-50/30', icono: 'text-green-600 bg-green-100' },
-  warning: { fondo: 'from-yellow-50 to-amber-50/30', icono: 'text-amber-600 bg-yellow-100' },
-  danger: { fondo: 'from-red-50 to-rose-50/30', icono: 'text-red-600 bg-red-100' },
-  neutral: { fondo: 'from-slate-50 to-slate-100/40', icono: 'text-slate-600 bg-slate-200' },
+const GRADIENTS: Record<TonoKpi, string> = {
+  ambar: 'from-[#f59e0b] to-[#d97706]',
+  indigo: 'from-[#4f46e5] to-[#3730a3]',
+  esmeralda: 'from-[#059669] to-[#047857]',
+  rosa: 'from-[#e11d48] to-[#be123c]',
+  neutro: 'from-slate-700 to-slate-900',
 };
 
 interface KpiTileProps {
   label: string;
   value: ComponentChildren;
   icon: IconName;
-  tono?: Tono;
-  meta?: ComponentChildren;
+  tono?: TonoKpi;
+  pie?: ComponentChildren;
   onClick?: () => void;
+  class?: string;
 }
 
-export function KpiTile({ label, value, icon, tono = 'default', meta, onClick }: KpiTileProps) {
-  const config = TONES[tono];
-  const Etiqueta = onClick ? 'button' : 'div';
-
+export function KpiTile({ label, value, icon, tono = 'neutro', pie, onClick, class: className = '' }: KpiTileProps) {
   return (
-    <Etiqueta
+    <button
+      type="button"
       onClick={onClick}
-      class={`flex w-full items-start justify-between gap-3 rounded-lg border border-slate-200 bg-gradient-to-br p-5 text-left shadow-card transition-colors ${config.fondo} ${
-        onClick ? 'hover:border-green-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600/30' : ''
-      }`}
+      class={`flex w-full flex-col items-center justify-center rounded-2xl bg-gradient-to-br p-6 text-center text-white shadow-md transition-transform hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-600/40 ${
+        GRADIENTS[tono]
+      } ${onClick ? 'cursor-pointer hover:-translate-y-0.5' : 'cursor-default'} ${className}`}
     >
-      <div class="min-w-0">
-        <p class="text-label-xs uppercase text-slate-500">{label}</p>
-        <p class="tnum mt-1.5 text-data-metric text-slate-900">{value}</p>
-        {meta && <div class="mt-2 text-label-sm text-slate-500">{meta}</div>}
-      </div>
-      <span class={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${config.icono}`}>
-        <Icon name={icon} size={22} />
+      <span class="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-white/20 shadow-inner">
+        <Icon name={icon} size={32} class="text-white" />
       </span>
-    </Etiqueta>
+      <span class="text-headline-sm font-bold tracking-wide">{label}</span>
+      <span class="tnum mt-1 text-headline-xl font-extrabold">{value}</span>
+      {pie && <span class="mt-1 text-[11px] font-medium text-white/90">{pie}</span>}
+    </button>
   );
 }

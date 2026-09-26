@@ -14,7 +14,7 @@ function Disparador() {
 }
 
 describe('Toast', () => {
-  it('muestra la notificacion y permite descartarla', () => {
+  it('muestra la notificación y permite descartarla', () => {
     render(
       <ToastProvider>
         <Disparador />
@@ -27,7 +27,7 @@ describe('Toast', () => {
     expect(screen.getByText('Pago registrado')).toBeInTheDocument();
 
     act(() => {
-      fireEvent.click(screen.getByLabelText('Cerrar notificacion'));
+      fireEvent.click(screen.getByLabelText('Cerrar notificación'));
     });
     expect(screen.queryByText('Pago registrado')).not.toBeInTheDocument();
   });
@@ -64,19 +64,19 @@ describe('Input', () => {
     const onInput = vi.fn();
     render(
       <Input
-        label="Monto aicionar"
+        label="Monto a ingresar"
         value=""
         onInput={onInput}
         prefix="C$"
-        error="El monto es menor al minimo legal"
+        error="El monto es menor al mínimo legal"
         required
         data-testid="monto"
       />
     );
 
-    const campo = screen.getByLabelText(/Monto aicionar/);
+    const campo = screen.getByLabelText(/Monto a ingresar/);
     expect(campo).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByText('El monto es menor al minimo legal')).toBeInTheDocument();
+    expect(screen.getByText('El monto es menor al mínimo legal')).toBeInTheDocument();
     expect(screen.getByText('C$')).toBeInTheDocument();
 
     fireEvent.input(campo, { target: { value: '1845.98' } });

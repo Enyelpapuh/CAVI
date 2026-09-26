@@ -1,70 +1,78 @@
+import { useEffect, useState } from 'preact/hooks';
+import type { ComponentChildren } from 'preact';
+import { useRouter } from 'preact-router';
 import { useAuth } from '../context/AuthContext';
-import { Link } from 'preact-router/match';
+import { Sidebar } from './layout/Sidebar';
+import { Topbar } from './layout/Topbar';
+import { TITULOS_RUTA } from './layout/navegacion';
 
 interface LayoutProps {
-  children: any;
+  children: ComponentChildren;
+  /** Titulo del encabezado superior; si se omite se deduce de la ruta. */
+  titulo?: string;
 }
 
-export function Layout({ children }: LayoutProps) {
-  const { user, logout, hasRole } = useAuth();
+export function Layout({ children, titulo }: LayoutProps) {
+  const { user } = useAuth();
+  const [ruta] = useRouter();
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
+  const rutaActual = (ruta?.url ?? '/').split('?')[0] || '/';
+  const encabezado = titulo ?? TITULOS_RUTA[rutaActual] ?? 'CAVI';
+
+  useEffect(() => {
+    setMenuAbierto(false);
+  }, [rutaActual]);
+
+  useEffect(() => {
+    if (!menuAbierto) return;
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuAbierto(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = overflowAnterior;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuAbierto]);
+
+  if (!user) {
+    return <div class="min-h-screen bg-slate-50">{children}</div>;
+  }
 
   return (
-    <div class="min-h-screen bg-gray-50">
-      <header class="bg-white shadow-sm border-b border-gray-200">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div class="flex justify-between items-center h-16">
-            <div class="flex items-center">
-              <h1 class="text-xl font-bold text-gray-900">CAVI</h1>
-            </div>
-            <nav class="flex items-center space-x-4">
-              {user && (
-                <>
-                  <Link
-                    path="/clientes"
-                    activeClassName="text-blue-600 font-medium"
-                    class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Clientes
-                  </Link>
-                  <Link
-                    path="/prestamos/nuevo"
-                    activeClassName="text-blue-600 font-medium"
-                    class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Nuevo Préstamo
-                  </Link>
-                  <Link
-                    path="/cobros"
-                    activeClassName="text-blue-600 font-medium"
-                    class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Cobros
-                  </Link>
-                  {hasRole('ADMINISTRADOR') && (
-                    <Link
-                      path="/fondos"
-                      activeClassName="text-blue-600 font-medium"
-                      class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                    >
-                      Fondos
-                    </Link>
-                  )}
-                  <span class="text-sm text-gray-500">{user.nombre_completo} ({user.rol})</span>
-                  <button
-                    onClick={logout}
-                    class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Cerrar sesión
-                  </button>
-                </>
-              )}
-            </nav>
-          </div>
+    <div class="min-h-screen bg-slate-50">
+      <aside class="fixed inset-y-0 left-0 z-50 hidden lg:block">
+        <Sidebar />
+      </aside>
+
+      {menuAbierto && (
+        <div class="fixed inset-0 z-50 lg:hidden">
+          <div
+            class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setMenuAbierto(false)}
+            data-testid="drawer-backdrop"
+            aria-hidden="true"
+          />
+          <aside
+            class="absolute inset-y-0 left-0 shadow-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menú de navegación"
+          >
+            <Sidebar onNavegar={() => setMenuAbierto(false)} />
+          </aside>
         </div>
-      </header>
-      <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
-      </main>
+      )}
+
+      <div class="lg:pl-[260px]">
+        <Topbar titulo={encabezado} onAbrirMenu={() => setMenuAbierto(true)} />
+        <main class="min-h-screen w-full px-4 pt-16 sm:px-6 lg:px-gutter">
+          <div class="mx-auto max-w-[1600px] py-space-md">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }
