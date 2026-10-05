@@ -3,7 +3,7 @@
 **Proyecto:** CAVI - Sistema Web para Control de Préstamos  
 **Metodología:** Scrum (Sprints de 2 semanas)  
 **Stack:** Backend: Django 5.2 + DRF + JWT + SQLite/PostgreSQL | Frontend: Preact + Vite + Tailwind  
-**Repositorio:** Git local (pendiente push a GitHub)
+**Repositorio:** Git local + GitHub (`origin/main` sincronizado)
 
 ---
 
@@ -17,7 +17,7 @@
 | **Sprint 3** | Control Mora + PDF Legal + Android | 6 (TK21-TK26) | ⏳ Pendiente | 0% | - |
 | **Sprint 4** | Pruebas + Despliegue + Validación Campo | 5 (TK27-TK31) | ⏳ Pendiente | 0% | - |
 
-**Total:** 31 tareas | **Completadas:** 24 | **En progreso:** 0 | **Pendientes:** 7
+**Total:** 31 tareas | **Completadas:** 24 | **En progreso:** 0 | **Pendientes:** 7 (Sprint 3: 27h, Sprint 4: 27h)
 
 ---
 
@@ -158,6 +158,7 @@ def create(self, request, *args, **kwargs):
 | 4 | API: agregados dashboard, caja, agenda, simulación de cuota, preview de prelación | ✅ | 08b38aa |
 | 5 | `DashboardPage`: KPIs reales, cartera filtrable, tabla responsive | ✅ | 3a8166b |
 | 6-7 | `CobrosPage`: agenda, caja propia y modal de abono con prelación en vivo | ✅ | d152e94 |
+| 8 | `ClientesPage`, `FondosPage`, `PrestamoFormPage` y `PagoRecibo` migrados + cotizador en vivo | ✅ | b3fda01 |
 
 **Nuevos endpoints (todos con tests):**
 
@@ -181,32 +182,49 @@ def create(self, request, *args, **kwargs):
 
 ---
 
-## Sprint 3 - PENDIENTE ⏳
+## Sprint 3 - PENDIENTE ⏳ (27h)
 
 **Objetivo:** Control mora, documentos PDF/A legales, empaquetado Android
 
-| Task | Descripción | Requisitos | Est. |
-|------|-------------|------------|------|
-| CAVI-TK21 | Motor evaluación mora (4 días gracia) | FR-11, UR-02, CU-04 | 4h |
-| CAVI-TK22 | Servicio generación PDF/A (WeasyPrint) | FR-12, NFR-07 | 5h |
-| CAVI-TK23 | Plantilla Pagaré legal (Ley 176, Código Comercio) | FR-13, CU-03 | 6h |
-| CAVI-TK24 | Dashboard semaforización cobranza | UR-02, CU-04 | 5h |
-| CAVI-TK25 | Descarga/impresión pagaré | UR-04, FR-12 | 3h |
-| CAVI-TK26 | Capacitor + build Android .apk | NFR-05 | 4h |
+**Base ya construida (no cuenta como tarea):**
+
+- `services/estados.py` calcula atraso, `DIAS_GRACIA = 4` y el semáforo operativo
+- `services/pagos.py` ya aplica la prelación mora → interés → capital con `mora_insoluto = 0.00` fijo
+- `PagoRecibo` ya es imprimible (`window.print()`) y lista para slapping en PDF
+
+| Task | Descripción | Requisitos | Est. | Estado |
+|------|-------------|------------|------|--------|
+| CAVI-TK21 | Motor evaluación mora (4 días gracia) | FR-11, UR-02, CU-04 | 4h | ⏳ Pendiente |
+| CAVI-TK22 | Servicio generación PDF/A (WeasyPrint) | FR-12, NFR-07 | 5h | ⏳ Pendiente |
+| CAVI-TK23 | Plantilla Pagaré legal (Ley 176, Código Comercio) | FR-13, CU-03 | 6h | ⏳ Pendiente |
+| CAVI-TK24 | Dashboard semaforización cobranza | UR-02, CU-04 | 5h | ⏳ Pendiente |
+| CAVI-TK25 | Descarga/impresión pagaré | UR-04, FR-12 | 3h | ⏳ Pendiente |
+| CAVI-TK26 | Capacitor + build Android .apk | NFR-05 | 4h | ⏳ Pendiente |
+
+**Detalle de TK21:** reemplazar `mora_insoluto = Decimal('0.00')` en `totales_insolutos()`
+por el generador real (días vencidos − 4 de gracia) × tasa diaria, y persistir el estado
+`EN_MORA` en el préstamo. Requiere agregar la dependencia de PDF (`weasyprint`) en
+`Backend/requirements.txt`, que hoy no existe.
 
 ---
 
-## Sprint 4 - PENDIENTE ⏳
+## Sprint 4 - PENDIENTE ⏳ (27h)
 
 **Objetivo:** Pruebas técnicas, despliegue nube, validación cualitativa
 
-| Task | Descripción | Requisitos | Est. |
-|------|-------------|------------|------|
-| CAVI-TK27 | Pruebas rendimiento < 2s | NFR-08 | 4h |
-| CAVI-TK28 | Pruebas resiliencia cortes red + rollback | NFR-04, TC-REL-002 | 4h |
-| CAVI-TK29 | Despliegue nube + HTTPS/TLS | NFR-02 | 5h |
-| CAVI-TK30 | Inmersión operativa + diario campo | Validación Campo | 8h |
-| CAVI-TK31 | Entrevistas cualitativas usabilidad | Enfoque Mixto | 6h |
+| Task | Descripción | Requisitos | Est. | Estado |
+|------|-------------|------------|------|--------|
+| CAVI-TK27 | Pruebas rendimiento < 2s | NFR-08 | 4h | ⏳ Pendiente |
+| CAVI-TK28 | Pruebas resiliencia cortes red + rollback | NFR-04, TC-REL-002 | 4h | ⏳ Pendiente |
+| CAVI-TK29 | Despliegue nube + HTTPS/TLS | NFR-02 | 5h | ⏳ Pendiente |
+| CAVI-TK30 | Inmersión operativa + diario campo | Validación Campo | 8h | ⏳ Pendiente |
+| CAVI-TK31 | Entrevistas cualitativas usabilidad | Enfoque Mixto | 6h | ⏳ Pendiente |
+
+**Pendientes técnicos sueltos (fuera de sprint, incluidos en el rediseño):**
+
+- Foco atrapado dentro de `Modal` y navegación por teclado en `DataTable`
+- Cierre de caja diario y conciliación de diferencias
+- Pagaré imprimible en HTML antes del PDF/A de TK23
 
 ---
 
@@ -224,9 +242,12 @@ def create(self, request, *args, **kwargs):
 
 ## Próximos Pasos Inmediatos
 
-1. **Sprint 3 (TK21-TK26):** Motor de mora (4 días de gracia), PDF/A legal, pagaré, descarga/impresión y empaquetado Android
-2. Enganchar la vistas de Préstamo y Clientes al shell nuevo (siguen con su layout anterior)
-3. `git push` de los commits de UI y API (locales, aún no enviados)
+1. **Sprint 3 - TK21:** motor de mora real (días vencidos − `DIAS_GRACIA = 4`) en
+   `Backend/API/services/pagos.py`, con estado `EN_MORA` persistido y tests
+2. **Sprint 3 - TK22/TK23/TK25:** dependencia WeasyPrint, plantilla de pagaré legal y descarga PDF
+3. **Sprint 3 - TK24:** semaforización de cobranza en `DashboardPage`
+4. **Sprint 3 - TK26:** empaquetado Capacitor
+5. **Sprint 4:** pruebas técnicas, despliegue con HTTPS y validación de campo
 
 ---
 
