@@ -103,7 +103,7 @@ Tailwind (`9999px`) para que las píldoras, avatares y badges sigan siendo círc
 | GET | `/api/dashboard/` | ADMINISTRADOR | `DashboardPage` |
 | GET | `/api/dashboard/caja/` | Autenticado | KPI "Cobros Hoy" y pestaña "Mi Caja" |
 | GET | `/api/dashboard/agenda/` | Autenticado | Lista de cobranza (sin `bolsas`) |
-| POST | `/api/prestamos/simular/` | Autenticado | Cotizador (siguiente iteración) |
+| POST | `/api/prestamos/simular/` | Autenticado | Cotizador en `PrestamoFormPage` |
 | POST | `/api/prestamos/{id}/preview_pago/` | Autenticado | Prelación en vivo del modal |
 
 Permisos en `Backend/API/permissions.py` (`EsAdministrador`); los agregados de caja y
@@ -116,7 +116,7 @@ agenda se calculan por usuario, no son globales.
 ```powershell
 # Frontend
 cd frontend
-npx vitest run          # 48 tests
+npx vitest run          # 55 tests
 npm run build           # tsc -b + vite build
 
 # Backend
@@ -131,12 +131,32 @@ Cobertura de los casos sensibles:
 - `test_prestamos.py::TestEstadoEfectivoEnListado`: semáforo en el listado.
 - `DashboardPage.test.tsx` / `CobrosPage.test.tsx`: KPIs, filtros, bloqueo por rol,
   prelación en vivo, validación del interés mínimo y referencia bancaria obligatoria.
+- `ClientesPage.test.tsx`: listado, búsqueda, validaciones, crear/editar y
+  deshabilitado con confirmación.
+- `PrestamoFormPage.test.tsx`: distribución entre fondos, Pi, cotización contra
+  `/api/prestamos/simular/` sin persistir y creación al confirmar.
+- `FondosPage.test.tsx` / `PagoRecibo.test.tsx`: KPIs, inyección/retiro y recibo Ley 842
+  con liquidación 50/50 oculta para `COBRANZA`.
 
 ---
 
-## 8. Pendiente
+## 8. Migración de páginas (completado)
 
-- Migrar `ClientesPage`, `FondosPage` y `PrestamoFormPage` al shell y primitivos nuevos
-- Sustituir las tablas densas por `DataTable` donde aporte
-- Conectar el cotizador a `POST /api/prestamos/simular/` en la UI de crédito
-- PDF/A del recibo y pagaré (Sprint 3)
+| Página | Estado |
+|--------|--------|
+| `DashboardPage` | `PageHeader` + KPI tiles + `DataTable` filtrable |
+| `CobrosPage` | Agenda, Mi Caja y modal de abono con `DataTable` de prelación |
+| `ClientesPage` | `PageHeader` + buscador + `DataTable` + `Modal` con `Input`/`Textarea` |
+| `FondosPage` | KPIs de capital/ganancias, `DataTable` de fondos y de movimientos |
+| `PrestamoFormPage` | Búsqueda de cliente, aportes por fondo y cotizador en vivo |
+| `PagoRecibo` | Receipto Ley 842 con `Modal`, `Button`, `Icon` y `Spinner`, conserva `print:` |
+
+Todas usan el shell `Layout`, tokens `slate`/`green` de `tailwind.config.js` y los
+primitivos de `frontend/src/components/ui`.
+
+## 9. Pendiente
+
+- Pagaré imprimible y PDF/A del recibo (Sprint 3)
+- Cierre de caja por día y conciliación de diferencias de caja
+- Mejoras de accesibilidad (foco atrapado en `Modal` y navegación por teclado en `DataTable`)
+

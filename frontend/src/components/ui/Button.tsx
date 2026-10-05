@@ -51,6 +51,8 @@ interface ButtonProps {
   iconRight?: IconName;
   title?: string;
   class?: string;
+  /** Permite enviar un formulario externo (util cuando el boton vive en el footer de un Modal). */
+  form?: string;
   'data-testid'?: string;
   'aria-label'?: string;
 }
@@ -68,6 +70,7 @@ export function Button({
   iconRight,
   title,
   class: className = '',
+  form,
   ...rest
 }: ButtonProps) {
   const inactivo = disabled || loading;
@@ -77,6 +80,7 @@ export function Button({
       onClick={onClick}
       disabled={inactivo}
       title={title}
+      form={form}
       class={`${buttonClasses(variant, size, fullWidth)} ${className}`}
       {...rest}
     >
