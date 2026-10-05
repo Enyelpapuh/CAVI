@@ -7,6 +7,7 @@ from .models import (
 from .services.pagos import totales_insolutos, interes_minimo_vencido
 from .services.amortizacion import validar_tasa
 from .services.estados import DIAS_GRACIA, dias_atraso, estado_efectivo
+from .services.mora import detalle_mora
 from django.utils import timezone
 from decimal import Decimal
 
@@ -186,14 +187,18 @@ class PrestamoSerializer(serializers.ModelSerializer):
     dias_atraso = serializers.SerializerMethodField()
     dias_gracia = serializers.SerializerMethodField()
     estado_efectivo = serializers.SerializerMethodField()
+    dias_mora = serializers.SerializerMethodField()
+    mora_pendiente = serializers.SerializerMethodField()
+    mora_detalle = serializers.SerializerMethodField()
 
     class Meta:
         model = Prestamo
         fields = ['id', 'cliente', 'cliente_nombre', 'monto_principal', 'saldo_insoluto', 'saldo_deudor',
                   'interes_minimo_ciclo', 'proxima_cuota', 'dias_atraso', 'dias_gracia', 'estado_efectivo',
-                  'tasa_interes', 'plazo_meses', 'periodicidad',
+                  'tasa_interes', 'tasa_mora', 'plazo_meses', 'periodicidad',
                   'fecha_desembolso', 'fecha_primer_corte', 'estado', 'creado_en', 'actualizado_en',
-                  'fondos_detalle', 'total_aportado', 'suma_pi']
+                  'fondos_detalle', 'total_aportado', 'suma_pi',
+                  'dias_mora', 'mora_pendiente', 'mora_detalle']
         read_only_fields = ['id', 'creado_en', 'actualizado_en', 'estado', 'saldo_insoluto']
 
     def get_total_aportado(self, obj):
@@ -234,6 +239,24 @@ class PrestamoSerializer(serializers.ModelSerializer):
     def get_estado_efectivo(self, obj):
         return estado_efectivo(obj)
 
+    def get_dias_mora(self, obj):
+        return detalle_mora(obj)['dias_mora']
+
+    def get_mora_pendiente(self, obj):
+        return detalle_mora(obj)['mora_pendiente']
+
+    def get_mora_detalle(self, obj):
+        """Desglose de mora visible para el cobrador (sin Pi ni utilidades)."""
+        d = detalle_mora(obj)
+        return {
+            'tasa_mora_mensual': d['tasa_mora_mensual'],
+            'tasa_mora_diaria': d['tasa_mora_diaria'],
+            'dias_mora': d['dias_mora'],
+            'dias_gracia': d['dias_gracia'],
+            'mora_pendiente': d['mora_pendiente'],
+            'mora_aplicada': d['mora_aplicada'],
+        }
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         request = self.context.get('request')
@@ -255,12 +278,14 @@ class PrestamoCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Prestamo
-        fields = ['id', 'cliente', 'monto_principal', 'tasa_interes', 'plazo_meses', 'periodicidad',
-                  'fecha_desembolso', 'fecha_primer_corte', 'fondos_detalle']
+        fields = ['id', 'cliente', 'monto_principal', 'tasa_interes', 'tasa_mora', 'plazo_meses',
+                  'periodicidad', 'fecha_desembolso', 'fecha_primer_corte', 'fondos_detalle']
         read_only_fields = ['id']
 
     def validate(self, attrs):
         validar_tasa(attrs['tasa_interes'])
+        if attrs.get('tasa_mora') is not None:
+            validar_tasa(attrs['tasa_mora'])
         fondos_detalle = attrs.get('fondos_detalle', [])
         if not fondos_detalle:
             raise serializers.ValidationError({"fondos_detalle": "Debe especificar al menos un fondo aportante."})

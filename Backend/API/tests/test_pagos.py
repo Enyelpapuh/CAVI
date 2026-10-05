@@ -83,17 +83,20 @@ class TestImputacionArt3180:
         assert str(prestamo_vigente.saldo_insoluto) == str(fila2['saldo_insoluto'])
 
     def test_sobrepago_se_trunca_y_cancela_prestamo(self, auth_client, prestamo_vigente):
+        # Al 2027-04-01 el corte 1 lleva 178 días fuera de gracia:
+        # mora = 10000 × (1.5%/30) × 178 = 890.00 (Art. 3180).
         res = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('20000.00', '2027-04-01'), format='json')
         assert res.status_code == 201
+        assert res.data['aplicacion_mora'] == '890.00'
         assert res.data['aplicacion_interes'] == '1075.86'
         assert res.data['aplicacion_capital'] == '10000.00'
-        assert res.data['exceso_no_aplicado'] == '8924.14'
+        assert res.data['exceso_no_aplicado'] == '8034.14'
         prestamo_vigente.refresh_from_db()
         assert str(prestamo_vigente.saldo_insoluto) == '0.00'
         assert prestamo_vigente.estado == Prestamo.Estado.CANCELADO
 
     def test_pago_sobre_prestamo_cancelado_es_rechazado(self, auth_client, prestamo_vigente):
-        auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('11075.86', '2027-04-01'), format='json')
+        auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('20000.00', '2027-04-01'), format='json')
         res = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('100.00', '2027-04-02'), format='json')
         assert res.status_code == 400
 
@@ -208,8 +211,12 @@ class TestLiquidacion50y50:
             ],
         }
         prestamo = Prestamo.objects.get(pk=auth_client.post('/api/prestamos/', data, format='json').data['id'])
-        res = auth_client.post(PAGO_URL.format(id=prestamo.id), pago_payload('11075.86', '2027-04-01'), format='json')
+        # 2027-04-01: 178 días fuera de gracia → mora 890.00; deuda total
+        # 10000.00 + 1075.86 + 890.00 = 11965.86.
+        res = auth_client.post(PAGO_URL.format(id=prestamo.id), pago_payload('11965.86', '2027-04-01'), format='json')
         assert res.status_code == 201
+        assert res.data['aplicacion_mora'] == '890.00'
+        assert res.data['exceso_no_aplicado'] == '0.00'
 
         f1.refresh_from_db()
         assert f1.saldo_disponible == Decimal('20000.00')  # capital totalmente reintegrado

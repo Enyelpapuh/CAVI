@@ -26,6 +26,19 @@ from .services.pagos import aplicar_pago, simular_pago
 Usuario = get_user_model()
 
 
+def _serializar_calculo(calculo):
+    """Convierte Decimals y fechas a texto, incluso en dicts anidados.
+
+    El desglose de prelación incluye `detalle_mora`, por lo que la conversión
+    tiene que ser recursiva para no perder precisión al serializar.
+    """
+    if isinstance(calculo, dict):
+        return {k: _serializar_calculo(v) for k, v in calculo.items()}
+    if isinstance(calculo, Decimal):
+        return str(calculo)
+    return calculo
+
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
@@ -314,7 +327,7 @@ class PrestamoViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
 
         calculo = simular_pago(prestamo, data['monto'], data['fecha_pago'])
-        return Response({k: (str(v) if isinstance(v, Decimal) else v) for k, v in calculo.items()})
+        return Response(_serializar_calculo(calculo))
 
     @action(detail=True, methods=['post'])
     def pagos(self, request, pk=None):

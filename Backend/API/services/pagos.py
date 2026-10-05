@@ -9,6 +9,8 @@ Reglas de negocio:
 - Se bloquea (HTTP 400) todo cobro menor al interés mínimo del ciclo vencido.
 - Un abono que exceda la deuda total se trunca a la deuda; el exceso no se aplica.
 - Al quedar la deuda en cero, el préstamo pasa a CANCELADO automáticamente.
+- La mora se genera por días vencidos fuera de gracia (`services/mora.py`) y se
+  imputa antes que el interés corriente, sin capitalizar intereses (Ley 176).
 """
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -24,6 +26,7 @@ from ..models import (
     Prestamo,
 )
 from .amortizacion import generar_proyeccion, validar_tasa
+from .mora import actualizar_mora_prestamo, detalle_mora, estado_por_mora, mora_pendiente
 
 
 def _cantidad(val):
@@ -84,8 +87,10 @@ def totales_insolutos(prestamo, fecha):
     """
     proy = generar_proyeccion(prestamo)
     capital_insoluto = _cantidad(prestamo.saldo_insoluto)
-    # Mora aún no implementada (Sprint 3: generador de mora automática).
-    mora_insoluto = Decimal('0.00')
+    # Mora generadora (Art. 3180): días vencidos fuera de gracia sobre el saldo
+    # insoluto. Se calcula sin escribir para que el preview y el asiento real
+    # usen exactamente la misma cifra.
+    mora_insoluto = mora_pendiente(prestamo, hoy=fecha, proyeccion=proy)
     interes_insoluto = _interes_vencido_pendiente(prestamo, proy, fecha)
     deuda_total = capital_insoluto + interes_insoluto + mora_insoluto
     return capital_insoluto, interes_insoluto, mora_insoluto, deuda_total, proy
@@ -173,6 +178,7 @@ def _prelacion(prestamo, monto, fecha_pago):
         'saldo_insoluto_tras_pago': saldo_tras_pago,
         'deuda_tras_pago': deuda_tras_pago,
         'deuda_liquidada': deuda_tras_pago == 0,
+        'detalle_mora': detalle_mora(prestamo, hoy=fecha_pago),
         'es_valido': es_valido,
         'error': error,
     }
@@ -200,6 +206,10 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
     calculo = _prelacion(prestamo, monto, fecha_pago)
     if not calculo['es_valido']:
         raise serializers.ValidationError(calculo['error'])
+
+    # La mora se devenga sobre el saldo vigente ANTES de amortizar capital,
+    # de modo que lo persistido sea exactamente lo que se previsualizó.
+    actualizar_mora_prestamo(prestamo, hoy=fecha_pago, sincronizar_estado=False)
 
     monto = calculo['monto_recibido']
     monto_aplicado = calculo['monto_aplicado']
@@ -303,7 +313,10 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
 
     if deuda_restante == 0:
         prestamo.estado = Prestamo.Estado.CANCELADO
-
+    else:
+        # El atraso se recalcula con los cortes ya pagados: un préstamo que se
+        # regulariza vuelve a VIGENTE sin perder los días ya facturados.
+        prestamo.estado = estado_por_mora(prestamo, hoy=fecha_pago)
     prestamo.save(update_fields=['saldo_insoluto', 'estado', 'actualizado_en'])
 
     return pago, {'exceso_no_aplicado': exceso}

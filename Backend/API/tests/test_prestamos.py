@@ -216,6 +216,9 @@ class TestEstadoEfectivoEnListado:
 
         assert fila['dias_atraso'] == 2
         assert fila['estado_efectivo'] == 'EN_GRACIA'
+        # Dentro de la gracia no se genera mora.
+        assert Decimal(fila['mora_pendiente']) == Decimal('0.00')
+        assert fila['dias_mora'] == 0
 
     def test_prestamo_en_mora_pasada_la_gracia(self, auth_client, cliente, crear_fondo):
         self._prestamo(cliente, crear_fondo(), dias_atraso=9)
@@ -224,6 +227,8 @@ class TestEstadoEfectivoEnListado:
 
         assert fila['dias_atraso'] == 9
         assert fila['estado_efectivo'] == 'EN_MORA'
-        # El corte vencido devenga interés corriente (1250.00) pero la mora por
-        # atraso todavía no se cobra (Sprint 3).
-        assert Decimal(fila['saldo_deudor']) == Decimal('51250.00')
+        # Corte vencido devenga interés corriente (1250.00) y los 5 días fuera de
+        # gracia generan mora: 50000 × (1.25%/30) × 5 = 104.17 (Art. 3180).
+        assert fila['dias_mora'] == 5
+        assert Decimal(fila['mora_pendiente']) == Decimal('104.17')
+        assert Decimal(fila['saldo_deudor']) == Decimal('51250.00') + Decimal('104.17')

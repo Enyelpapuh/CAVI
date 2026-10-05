@@ -188,6 +188,32 @@ class Prestamo(models.Model):
         help_text=_('Capital aún no amortizado (se actualiza con cada pago)')
     )
     tasa_interes = models.DecimalField(_('tasa interés'), max_digits=5, decimal_places=4)
+    tasa_mora = models.DecimalField(
+        _('tasa mora mensual'),
+        max_digits=5,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text=_(
+            'Tasa mensual de recargo por mora. Si se deja vacía aplica la mitad de la '
+            'tasa de interés pactada (Art. 3180 Código Civil).'
+        )
+    )
+    dias_mora = models.PositiveIntegerField(
+        _('días de mora facturados'),
+        default=0,
+        help_text=_('Días ya vencidos fuera de gracia que generaron mora')
+    )
+    mora_acumulada = models.DecimalField(
+        _('mora acumulada'),
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text=_('Mora generada desde el desembolso; los pagos la van cubriendo')
+    )
+    fecha_ultimo_calculo_mora = models.DateField(
+        _('fecha último cálculo mora'), null=True, blank=True
+    )
     plazo_meses = models.PositiveIntegerField(_('plazo meses'))
     periodicidad = models.CharField(
         _('periodicidad'),
