@@ -78,6 +78,20 @@ export interface Prestamo {
   dias_gracia: number;
   estado_efectivo: EstadoEfectivo;
   tasa_interes: string;
+  /** Tasa mensual de mora; `null` aplica la mitad de la tasa pactada. */
+  tasa_mora: string | null;
+  /** Días vencidos fuera de gracia que ya generaron mora. */
+  dias_mora: number;
+  /** Mora exigible y aún impaga. */
+  mora_pendiente: string;
+  mora_detalle: {
+    tasa_mora_mensual: string;
+    tasa_mora_diaria: string;
+    dias_mora: number;
+    dias_gracia: number;
+    mora_pendiente: string;
+    mora_aplicada: string;
+  };
   plazo_meses: number;
   periodicidad: 'MENSUAL' | 'QUINCENAL';
   fecha_desembolso: string;
@@ -103,6 +117,14 @@ export interface CarteraFila {
   estado_efectivo: EstadoEfectivo;
   dias_atraso: number;
   dias_gracia: number;
+  /** Días fuera de gracia que ya generaron mora. */
+  dias_mora: number;
+  /** Interés corriente de cortes vencidos e impagos. */
+  interes_vencido: string;
+  /** Mora exigible por el atraso acumulado. */
+  mora_pendiente: string;
+  mora_acumulada: string;
+  tasa_mora: string;
   saldo_deudor: string;
   saldo_insoluto: string;
   cuota: string | null;
@@ -117,8 +139,15 @@ export interface ResumenCartera {
   cantidad: number;
   saldo_total: string;
   porcentaje_sano: string;
+  al_dia: number;
   en_mora: number;
   en_gracia: number;
+  /** Saldo deudor de los créditos en mora. */
+  saldo_en_mora: string;
+  /** Mora exigible acumulada de toda la cartera. */
+  mora_total: string;
+  interes_vencido_total: string;
+  dias_gracia: number;
   filas: CarteraFila[];
 }
 
@@ -130,8 +159,21 @@ export interface Dashboard {
     cantidad: number;
     saldo_total: string;
     porcentaje_sano: string;
+    al_dia: number;
     en_mora: number;
     en_gracia: number;
+    saldo_en_mora: string;
+    mora_total: string;
+    interes_vencido_total: string;
+  };
+  /** Semáforo de cobranza del panel (TK24). */
+  cartera_semaforo: {
+    al_dia: number;
+    en_gracia: number;
+    en_mora: number;
+    dias_gracia: number;
+    saldo_en_mora: string;
+    mora_total: string;
   };
   abonos_del_dia: { monto: string; cantidad: number };
   cartera: CarteraFila[];
@@ -169,6 +211,18 @@ export interface PreviewPago {
   saldo_insoluto_tras_pago: string;
   deuda_tras_pago: string;
   deuda_liquidada: boolean;
+  /** Detalle del recargo por atraso (Art. 3180 / Art. 3184). */
+  detalle_mora: {
+    tasa_mora_mensual: string;
+    tasa_mora_diaria: string;
+    dias_mora: number;
+    dias_nuevos?: number;
+    dias_gracia: number;
+    mora_acumulada: string;
+    mora_no_persistida: string;
+    mora_aplicada: string;
+    mora_pendiente: string;
+  };
   es_valido: boolean;
   error: { monto?: string } | null;
 }

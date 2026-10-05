@@ -39,6 +39,11 @@ const FILA = {
   estado_efectivo: 'AL_DIA' as const,
   dias_atraso: 0,
   dias_gracia: 4,
+  dias_mora: 0,
+  interes_vencido: '0.00',
+  mora_pendiente: '0.00',
+  mora_acumulada: '0.00',
+  tasa_mora: '0.0125',
   saldo_deudor: '8754.02',
   saldo_insoluto: '8454.02',
   cuota: '1845.98',
@@ -55,6 +60,10 @@ const MORA = {
   estado: 'EN_MORA' as const,
   estado_efectivo: 'EN_MORA' as const,
   dias_atraso: 9,
+  dias_mora: 5,
+  mora_pendiente: '62.50',
+  mora_acumulada: '62.50',
+  interes_vencido: '1250.00',
   saldo_deudor: '51250.00',
   cuota: '4874.36',
   cuota_periodo: 1,
@@ -65,8 +74,12 @@ const AGENDA = {
     cantidad: 2,
     saldo_total: '60004.02',
     porcentaje_sano: '50.00',
+    al_dia: 1,
     en_mora: 1,
     en_gracia: 0,
+    saldo_en_mora: '51250.00',
+    mora_total: '62.50',
+    interes_vencido_total: '1250.00',
   },
   filas: [FILA, MORA],
 };
@@ -99,6 +112,18 @@ const PREVIEW = {
   deuda_liquidada: false,
   es_valido: true,
   error: null,
+  detalle_mora: {
+    aplica: false,
+    dias_mora: 0,
+    dias_nuevos: 0,
+    mora_pendiente: '0.00',
+    mora_acumulada: '0.00',
+    mora_diaria: '0.00',
+    mora_nueva: '0.00',
+    saldo_base: '8454.02',
+    tasa_mora_mensual: '0.0125',
+    mora_acumulada_interes: false,
+  },
 };
 
 const PAGO_CREADO = {
@@ -148,6 +173,17 @@ describe('CobrosPage', () => {
     expect(dashboardService.caja).toHaveBeenCalled();
   });
 
+  it('marca la mora e interes exigibles de cada credito', async () => {
+    render(<CobrosPage />);
+
+    await waitFor(() => screen.getByText('Maria Lopez'));
+    expect(screen.getByText(/Mora C\$62\.50 · 5 dias/)).toBeInTheDocument();
+    expect(screen.getByText(/Interes C\$1,250\.00/)).toBeInTheDocument();
+    // El credito al dia no muestra insignias de mora.
+    const tarjetaSana = screen.getByText('Juan Perez').closest('li');
+    expect(tarjetaSana?.textContent).not.toContain('Mora C$');
+  });
+
   it('avisa la restriccion de privacidad al rol cobranza', async () => {
     render(<CobrosPage />);
     await waitFor(() => screen.getByText('Juan Perez'));
@@ -177,6 +213,23 @@ describe('CobrosPage', () => {
     expect(await screen.findByText('Imputación Art. 3180')).toBeInTheDocument();
     expect(screen.getByText('C$253.62')).toBeInTheDocument();
     expect(screen.getByText('C$1,592.36')).toBeInTheDocument();
+  });
+
+  it('advierte que la mora se cobra antes que el interes', async () => {
+    (prestamoService.previewPago as any).mockResolvedValue({
+      ...PREVIEW,
+      detalle_mora: { ...PREVIEW.detalle_mora, aplica: true, dias_mora: 5, mora_pendiente: '62.50' },
+    });
+    render(<CobrosPage />);
+    await waitFor(() => screen.getByText('Juan Perez'));
+
+    fireEvent.click(screen.getByTestId('cobrar-1'));
+    fireEvent.input(screen.getByLabelText(/Monto a cobrar/), { target: { value: '1908.48' } });
+
+    expect(
+      await screen.findByText(/Mora de 5 dias fuera de gracia al 1\.25% mensual/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Se cobra antes que el interes/)).toBeInTheDocument();
   });
 
   it('bloquea el cobro si el monto es menor al interes del ciclo', async () => {

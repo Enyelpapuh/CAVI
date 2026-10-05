@@ -273,6 +273,21 @@ class TestComandoActualizarMora:
         assert prestamo.estado == Prestamo.Estado.VIGENTE
         assert '[dry-run]' in capsys.readouterr().out
 
+    def test_dry_run_proyecta_el_estado_sin_persistirlo(self, cliente, crear_fondo, capsys):
+        from django.core.management import call_command
+
+        prestamo = _crear(cliente, crear_fondo(), dias=30)
+
+        call_command('actualizar_mora', '--dry-run')
+
+        # El reporte debe mostrar el estado que tendría, no el almacenado.
+        salida = capsys.readouterr().out
+        assert '1 en mora' in salida
+        assert '0 al día' in salida
+        assert '-> EN_MORA' in salida
+        prestamo.refresh_from_db()
+        assert prestamo.estado == Prestamo.Estado.VIGENTE
+
 
 class TestMoraNoGenerada:
     def test_mora_no_persistida_es_cero_si_ya_se_contabilizo(self, cliente, crear_fondo):

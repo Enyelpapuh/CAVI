@@ -31,6 +31,11 @@ const fila = (over: Record<string, any> = {}) => ({
   estado_efectivo: 'AL_DIA',
   dias_atraso: 0,
   dias_gracia: 4,
+  dias_mora: 0,
+  interes_vencido: '0.00',
+  mora_pendiente: '0.00',
+  mora_acumulada: '0.00',
+  tasa_mora: '0.0125',
   saldo_deudor: '52500.00',
   saldo_insoluto: '50000.00',
   cuota: '4874.36',
@@ -45,7 +50,25 @@ const DASHBOARD = {
   fecha: '2026-09-26',
   clientes_activos: 12,
   bolsas: { cantidad: 3, capital_en_calle: '150000.00' },
-  creditos_vigentes: { cantidad: 2, saldo_total: '100000.00', porcentaje_sano: '50.00', en_mora: 1, en_gracia: 0 },
+  creditos_vigentes: {
+    cantidad: 2,
+    saldo_total: '100000.00',
+    porcentaje_sano: '50.00',
+    al_dia: 1,
+    en_mora: 1,
+    en_gracia: 0,
+    saldo_en_mora: '51250.00',
+    mora_total: '62.50',
+    interes_vencido_total: '1250.00',
+  },
+  cartera_semaforo: {
+    al_dia: 1,
+    en_gracia: 0,
+    en_mora: 1,
+    dias_gracia: 4,
+    saldo_en_mora: '51250.00',
+    mora_total: '62.50',
+  },
   abonos_del_dia: { monto: '2000.00', cantidad: 1 },
   cartera: [
     fila(),
@@ -56,6 +79,9 @@ const DASHBOARD = {
       estado: 'EN_MORA',
       estado_efectivo: 'EN_MORA',
       dias_atraso: 9,
+      dias_mora: 5,
+      mora_pendiente: '62.50',
+      interes_vencido: '1250.00',
       saldo_deudor: '51250.00',
     }),
   ],
@@ -82,6 +108,28 @@ describe('DashboardPage', () => {
     // Resumen de cartera
     expect(screen.getByText('Cartera Total').parentElement?.textContent).toContain('C$100,000.00');
     expect(screen.getByText('En Mora', { selector: 'p' }).parentElement?.textContent).toContain('1');
+  });
+
+  it('muestra el semaforo de cobranza y la mora por recuperar', async () => {
+    (dashboardService.resumen as any).mockResolvedValue(DASHBOARD);
+    render(<DashboardPage />);
+
+    await waitFor(() => expect(screen.getByText('Semaforo de cobranza')).toBeInTheDocument());
+    expect(screen.getByText(/1 al dia/)).toBeInTheDocument();
+    expect(screen.getByText(/0 en gracia/)).toBeInTheDocument();
+    expect(screen.getByText(/1 en mora/)).toBeInTheDocument();
+    expect(screen.getByText('Saldo en mora').parentElement?.textContent).toContain('C$51,250.00');
+    expect(screen.getByText('Mora por recuperar').parentElement?.textContent).toContain('C$62.50');
+    expect(screen.getByText('Interes vencido').parentElement?.textContent).toContain('C$1,250.00');
+  });
+
+  it('detalla la mora exigible de cada credito', async () => {
+    (dashboardService.resumen as any).mockResolvedValue(DASHBOARD);
+    render(<DashboardPage />);
+
+    await waitFor(() => expect(screen.getAllByText('Maria Lopez').length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/Mora C\$62\.50 · 5 dias/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Interes vencido C\$1,250\.00/).length).toBeGreaterThan(0);
   });
 
   it('lista la cartera con el semaforo de atraso', async () => {

@@ -56,6 +56,13 @@ function Prelacion({ preview }: { preview: PreviewPago }) {
           El excedente se devuelve al cliente: el pago no puede rebasar la deuda total.
         </p>
       )}
+      {preview.detalle_mora && preview.detalle_mora.dias_mora > 0 && (
+        <p class="mt-2 text-body-sm text-red-700">
+          Mora de {preview.detalle_mora.dias_mora} dias fuera de gracia al{' '}
+          {fmtPorcentaje(Number(preview.detalle_mora.tasa_mora_mensual) * 100, 2)} mensual
+          (Art. 3184). Se cobra antes que el interes.
+        </p>
+      )}
     </div>
   );
 }
@@ -368,6 +375,21 @@ export function CobrosPage() {
                     <p class="mt-2 truncate text-body-sm text-slate-500">
                       {fila.cliente_telefono || 'Sin telefono'} · {fila.cliente_direccion || 'Sin direccion'}
                     </p>
+
+                    {(Number(fila.mora_pendiente) > 0 || Number(fila.interes_vencido) > 0) && (
+                      <div class="mt-2 flex flex-wrap gap-2">
+                        {Number(fila.mora_pendiente) > 0 && (
+                          <span class="tnum rounded-full bg-red-50 px-2 py-0.5 text-label-xs font-medium text-red-700">
+                            Mora {fmtMonto(fila.mora_pendiente)} · {fila.dias_mora} dias
+                          </span>
+                        )}
+                        {Number(fila.interes_vencido) > 0 && (
+                          <span class="tnum rounded-full bg-amber-50 px-2 py-0.5 text-label-xs font-medium text-amber-700">
+                            Interes {fmtMonto(fila.interes_vencido)}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     <Button
                       class="mt-3 w-full"

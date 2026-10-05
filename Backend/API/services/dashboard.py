@@ -6,7 +6,9 @@ Reglas:
 - `caja_de_usuario` solo expone lo que el usuario autenticado cobra y
   registra: respeta la privacidad de la Ley 787 (sin fondos, sin liquidaciones
   50/50 y sin ganancias administrativas).
-- El semáforo usa `DIAS_GRACIA`; la mora todavía no se cobra (Sprint 3).
+- El semáforo y la mora exigible salen de `services/estados.py` y
+  `services/mora.py`; `DIAS_GRACIA` es la única constante compartida con el
+  frontend.
 """
 from decimal import Decimal
 
@@ -15,6 +17,7 @@ from django.utils import timezone
 
 from ..models import Cliente, Fondo, Pago, Prestamo
 from .estados import DIAS_GRACIA, dias_atraso, estado_efectivo
+from .mora import detalle_mora as detalle_mora_prestamo
 from .pagos import totales_insolutos
 
 VIGENTES = (Prestamo.Estado.VIGENTE, Prestamo.Estado.EN_GRACIA, Prestamo.Estado.EN_MORA)
@@ -41,14 +44,15 @@ def _serializable(valor):
 
 
 def indicadores_prestamo(prestamo, hoy, incluir_bolsas=True):
-    """Saldo deudor, cuota vigente y semáforo de un préstamo."""
-    _cap, _int, _mora, deuda_total, proy = totales_insolutos(prestamo, hoy)
+    """Saldo deudor, cuota vigente, mora exigible y semáforo de un préstamo."""
+    capital, interes, mora, deuda_total, proy = totales_insolutos(prestamo, hoy)
 
     proxima = next(
         (fila for fila in proy['periodos'] if fila['fecha_vencimiento'] >= hoy),
         proy['periodos'][-1] if proy['periodos'] else None,
     )
     atraso = dias_atraso(prestamo, hoy=hoy, proyeccion=proy)
+    detalle_mora = detalle_mora_prestamo(prestamo, hoy=hoy, proyeccion=proy)
 
     return {
         'id': prestamo.id,
@@ -60,6 +64,11 @@ def indicadores_prestamo(prestamo, hoy, incluir_bolsas=True):
         'estado_efectivo': estado_efectivo(prestamo, hoy=hoy, proyeccion=proy),
         'dias_atraso': atraso,
         'dias_gracia': DIAS_GRACIA,
+        'dias_mora': detalle_mora['dias_mora'],
+        'interes_vencido': interes,
+        'mora_pendiente': mora,
+        'mora_acumulada': detalle_mora['mora_acumulada'],
+        'tasa_mora': detalle_mora['tasa_mora_mensual'],
         'saldo_deudor': deuda_total,
         'saldo_insoluto': _d(prestamo.saldo_insoluto),
         'cuota': proxima['cuota'] if proxima else None,
@@ -99,6 +108,12 @@ def resumen_cartera(hoy=None, limite=LIMITE_CARTERA, incluir_bolsas=True):
         (f['saldo_deudor'] for f in filas if f['estado_efectivo'] in ('AL_DIA', 'EN_GRACIA')),
         Decimal('0.00'),
     )
+    saldo_en_mora = sum(
+        (f['saldo_deudor'] for f in filas if f['estado_efectivo'] == 'EN_MORA'),
+        Decimal('0.00'),
+    )
+    mora_total = sum((f['mora_pendiente'] for f in filas), Decimal('0.00'))
+    interes_vencido_total = sum((f['interes_vencido'] for f in filas), Decimal('0.00'))
     porcentaje_sano = (
         (saldo_sano / saldo_total * 100).quantize(Decimal('0.01'))
         if saldo_total > 0
@@ -109,8 +124,13 @@ def resumen_cartera(hoy=None, limite=LIMITE_CARTERA, incluir_bolsas=True):
         'cantidad': len(filas),
         'saldo_total': saldo_total,
         'porcentaje_sano': porcentaje_sano,
+        'al_dia': len([f for f in filas if f['estado_efectivo'] == 'AL_DIA']),
         'en_mora': len([f for f in filas if f['estado_efectivo'] == 'EN_MORA']),
         'en_gracia': len([f for f in filas if f['estado_efectivo'] == 'EN_GRACIA']),
+        'saldo_en_mora': saldo_en_mora,
+        'mora_total': mora_total,
+        'interes_vencido_total': interes_vencido_total,
+        'dias_gracia': DIAS_GRACIA,
         'filas': _serializable(filas[:limite] if limite else filas),
     }
 
@@ -136,8 +156,20 @@ def resumen_dashboard(hoy=None, limite=LIMITE_CARTERA):
             'cantidad': cartera['cantidad'],
             'saldo_total': cartera['saldo_total'],
             'porcentaje_sano': cartera['porcentaje_sano'],
+            'al_dia': cartera['al_dia'],
             'en_mora': cartera['en_mora'],
             'en_gracia': cartera['en_gracia'],
+            'saldo_en_mora': cartera['saldo_en_mora'],
+            'mora_total': cartera['mora_total'],
+            'interes_vencido_total': cartera['interes_vencido_total'],
+        },
+        'cartera_semaforo': {
+            'al_dia': cartera['al_dia'],
+            'en_gracia': cartera['en_gracia'],
+            'en_mora': cartera['en_mora'],
+            'dias_gracia': DIAS_GRACIA,
+            'saldo_en_mora': cartera['saldo_en_mora'],
+            'mora_total': cartera['mora_total'],
         },
         'abonos_del_dia': {
             'monto': _d(abonos['total']),

@@ -92,6 +92,46 @@ class TestDashboardAdministrador:
         assert res.data['creditos_vigentes']['en_mora'] == 0
         assert Decimal(res.data['creditos_vigentes']['porcentaje_sano']) == Decimal('100.00')
 
+    def test_semaforo_clasifica_la_cartera_y_suma_la_mora(
+        self, auth_client, cliente, crear_fondo
+    ):
+        fondo = crear_fondo(capital='200000.00')
+        crear_prestamo(cliente, fondo, monto='50000.00', dias_atraso=0)   # al día
+        crear_prestamo(cliente, fondo, monto='30000.00', dias_atraso=3)   # en gracia
+        crear_prestamo(cliente, fondo, monto='20000.00', dias_atraso=9)   # en mora
+
+        res = auth_client.get(DASHBOARD_URL)
+
+        semaforo = res.data['cartera_semaforo']
+        assert semaforo['al_dia'] == 1
+        assert semaforo['en_gracia'] == 1
+        assert semaforo['en_mora'] == 1
+        assert semaforo['dias_gracia'] == 4
+        # Solo el préstamo en mora tiene recargo: 20000 × (1.25%/30) × 5 días.
+        assert Decimal(semaforo['mora_total']) == Decimal('41.67')
+        assert Decimal(semaforo['saldo_en_mora']) > Decimal('20000.00')
+
+        fila_mora = next(f for f in res.data['cartera'] if f['estado_efectivo'] == 'EN_MORA')
+        assert fila_mora['dias_mora'] == 5
+        assert Decimal(fila_mora['mora_pendiente']) == Decimal('41.67')
+        assert Decimal(fila_mora['tasa_mora']) == Decimal('0.0125')
+        # El corte vencido también devenga interés corriente.
+        assert Decimal(fila_mora['interes_vencido']) > 0
+
+    def test_la_agenda_mostra_la_mora_sin_exponer_fondos(
+        self, cobrador_client, cliente, crear_fondo
+    ):
+        fondo = crear_fondo(capital='50000.00')
+        crear_prestamo(cliente, fondo, dias_atraso=10)
+
+        res = cobrador_client.get(AGENDA_URL)
+
+        fila = res.data['filas'][0]
+        assert fila['estado_efectivo'] == 'EN_MORA'
+        assert Decimal(fila['mora_pendiente']) > 0
+        assert fila['bolsas'] == []
+        assert res.data['resumen']['mora_total'] == fila['mora_pendiente']
+
     def test_abonos_del_dia_suman_solo_pagos_de_hoy(
         self, auth_client, admin_user, cliente, crear_fondo
     ):

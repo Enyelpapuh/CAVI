@@ -6,6 +6,7 @@ import { dashboardService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { fmtMonto, fmtCantidad, fmtPorcentaje, fmtNumero, fmtFecha, iniciales, normalizar } from '../lib/format';
 import type { Dashboard, CarteraFila } from '../types';
+import { DIAS_GRACIA } from '../lib/estadoPrestamo';
 
 type FiltroCartera = 'TODOS' | 'EN_MORA' | 'EN_GRACIA' | 'AL_DIA';
 
@@ -16,8 +17,21 @@ const FILTROS: { valor: FiltroCartera; label: string }[] = [
   { valor: 'AL_DIA', label: 'Al Dia' },
 ];
 
+const SEMAFORO_TONO = {
+  al_dia: 'bg-emerald-500',
+  en_gracia: 'bg-amber-400',
+  en_mora: 'bg-red-500',
+} as const;
+
+function semaforoTotal(semaforo?: Dashboard['cartera_semaforo']): number {
+  if (!semaforo) return 0;
+  return semaforo.al_dia + semaforo.en_gracia + semaforo.en_mora;
+}
+
 /** Fila de cartera como tarjeta: en movil se lee mejor que una tabla. */
 function CarteraCard({ fila }: { fila: CarteraFila }) {
+  const mora = Number(fila.mora_pendiente || 0);
+  const interes = Number(fila.interes_vencido || 0);
   return (
     <li class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div class="flex items-start gap-3">
@@ -52,6 +66,20 @@ function CarteraCard({ fila }: { fila: CarteraFila }) {
           </dd>
         </div>
       </dl>
+      {(mora > 0 || interes > 0) && (
+        <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-body-sm">
+          {mora > 0 && (
+            <span class="tnum inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-label-xs font-medium text-red-700">
+              Mora {fmtMonto(fila.mora_pendiente)} · {fila.dias_mora} dias
+            </span>
+          )}
+          {interes > 0 && (
+            <span class="tnum inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-label-xs font-medium text-amber-700">
+              Interes vencido {fmtMonto(fila.interes_vencido)}
+            </span>
+          )}
+        </div>
+      )}
     </li>
   );
 }
@@ -173,9 +201,9 @@ export function DashboardPage() {
           <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[
               { label: 'Cartera Total', valor: fmtMonto(datos?.creditos_vigentes.saldo_total), icono: 'query_stats' as const },
-              { label: 'En Mora', valor: fmtCantidad(datos?.creditos_vigentes.en_mora), icono: 'priority_high' as const },
+              { label: 'Al Dia', valor: fmtCantidad(datos?.creditos_vigentes.al_dia), icono: 'task_alt' as const },
               { label: 'En Gracia', valor: fmtCantidad(datos?.creditos_vigentes.en_gracia), icono: 'schedule' as const },
-              { label: 'Saneada', valor: fmtPorcentaje(datos?.creditos_vigentes.porcentaje_sano, 1), icono: 'verified' as const },
+              { label: 'En Mora', valor: fmtCantidad(datos?.creditos_vigentes.en_mora), icono: 'priority_high' as const },
             ].map((item) => (
               <Card key={item.label} class="flex items-center gap-3">
                 <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
@@ -188,6 +216,64 @@ export function DashboardPage() {
               </Card>
             ))}
           </div>
+
+          <Card class="mt-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-label-sm uppercase text-slate-500">Semaforo de cobranza</p>
+                <p class="tnum text-headline-sm font-bold text-slate-900">
+                  {fmtPorcentaje(datos?.creditos_vigentes.porcentaje_sano, 1)} de la cartera esta al dia
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2 text-label-sm">
+                <span class="tnum rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                  {fmtCantidad(datos?.cartera_semaforo?.al_dia)} al dia
+                </span>
+                <span class="tnum rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
+                  {fmtCantidad(datos?.cartera_semaforo?.en_gracia)} en gracia (
+                  {datos?.cartera_semaforo?.dias_gracia ?? DIAS_GRACIA} dias)
+                </span>
+                <span class="tnum rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700">
+                  {fmtCantidad(datos?.cartera_semaforo?.en_mora)} en mora
+                </span>
+              </div>
+            </div>
+            <div class="mt-3 flex h-2 overflow-hidden rounded-full bg-slate-100">
+              {(['al_dia', 'en_gracia', 'en_mora'] as const).map((clave) => {
+                const total = semaforoTotal(datos?.cartera_semaforo);
+                const valor = datos?.cartera_semaforo?.[clave] ?? 0;
+                const porcentaje = total > 0 ? (valor / total) * 100 : 0;
+                return (
+                  <span
+                    key={clave}
+                    class={SEMAFORO_TONO[clave]}
+                    style={{ width: `${porcentaje}%` }}
+                    aria-hidden="true"
+                  />
+                );
+              })}
+            </div>
+            <dl class="mt-4 grid grid-cols-1 gap-3 border-t border-slate-100 pt-3 text-body-sm sm:grid-cols-3">
+              <div>
+                <dt class="text-slate-500">Saldo en mora</dt>
+                <dd class="tnum font-semibold text-red-700">
+                  {fmtMonto(datos?.cartera_semaforo?.saldo_en_mora)}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-slate-500">Mora por recuperar</dt>
+                <dd class="tnum font-semibold text-red-700">
+                  {fmtMonto(datos?.cartera_semaforo?.mora_total)}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-slate-500">Interes vencido</dt>
+                <dd class="tnum font-semibold text-amber-700">
+                  {fmtMonto(datos?.creditos_vigentes.interes_vencido_total)}
+                </dd>
+              </div>
+            </dl>
+          </Card>
 
           <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex flex-wrap gap-2">
@@ -244,6 +330,7 @@ export function DashboardPage() {
                         <th scope="col" class="px-4 py-3 font-semibold">Cliente</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Estado</th>
                         <th scope="col" class="px-4 py-3 text-right font-semibold">Deuda</th>
+                        <th scope="col" class="px-4 py-3 text-right font-semibold">Mora</th>
                         <th scope="col" class="px-4 py-3 text-right font-semibold">Cuota</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Vence</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Periodo</th>
@@ -262,6 +349,20 @@ export function DashboardPage() {
                           </td>
                           <td class="tnum px-4 py-3 text-right font-semibold text-slate-900">
                             {fmtMonto(fila.saldo_deudor)}
+                          </td>
+                          <td class="tnum px-4 py-3 text-right">
+                            {Number(fila.mora_pendiente) > 0 ? (
+                              <>
+                                <span class="font-semibold text-red-700">
+                                  {fmtMonto(fila.mora_pendiente)}
+                                </span>
+                                <span class="block text-body-sm text-slate-500">
+                                  {fila.dias_mora} dias
+                                </span>
+                              </>
+                            ) : (
+                              <span class="text-slate-400">-</span>
+                            )}
                           </td>
                           <td class="tnum px-4 py-3 text-right text-slate-700">{fmtMonto(fila.cuota)}</td>
                           <td class="tnum px-4 py-3 text-slate-700">{fmtFecha(fila.cuota_fecha)}</td>
