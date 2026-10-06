@@ -14,10 +14,10 @@
 | **Sprint 0** | Infraestructura Base + Padrón Clientes | 7 (TK01-TK07) | ✅ **COMPLETADO** | 100% | 2026-09-22 |
 | **Sprint 1** | Fondos Familiares + Desembolso Multifondo | 7 (TK08-TK14) | ✅ **COMPLETADO** | 100% | 2026-09-23 → 2026-09-24 |
 | **Sprint 2** | Motor Amortización + Cobranza + Liquidación 50/50 | 6 (TK15-TK20) | ✅ Completado | 100% | 2026-09-25 |
-| **Sprint 3** | Control Mora + PDF Legal + Android | 6 (TK21-TK26) | ⏳ Pendiente | 0% | - |
+| **Sprint 3** | Control Mora + PDF Legal + Android | 6 (TK21-TK26) | ✅ Completado | 100% | 2026-10-06 |
 | **Sprint 4** | Pruebas + Despliegue + Validación Campo | 5 (TK27-TK31) | ⏳ Pendiente | 0% | - |
 
-**Total:** 31 tareas | **Completadas:** 24 | **En progreso:** 0 | **Pendientes:** 7 (Sprint 3: 27h, Sprint 4: 27h)
+**Total:** 31 tareas | **Completadas:** 30 | **En progreso:** 0 | **Pendientes:** 1 (Sprint 4: 27h)
 
 ---
 
@@ -194,11 +194,11 @@ def create(self, request, *args, **kwargs):
 
 | Task | Descripción | Requisitos | Est. | Estado |
 |------|-------------|------------|------|--------|
-| CAVI-TK21 | Motor evaluación mora (4 días gracia) | FR-11, UR-02, CU-04 | 4h | ⏳ Pendiente |
-| CAVI-TK22 | Servicio generación PDF/A (WeasyPrint) | FR-12, NFR-07 | 5h | ⏳ Pendiente |
-| CAVI-TK23 | Plantilla Pagaré legal (Ley 176, Código Comercio) | FR-13, CU-03 | 6h | ⏳ Pendiente |
-| CAVI-TK24 | Dashboard semaforización cobranza | UR-02, CU-04 | 5h | ⏳ Pendiente |
-| CAVI-TK25 | Descarga/impresión pagaré | UR-04, FR-12 | 3h | ⏳ Pendiente |
+| CAVI-TK21 | Motor evaluación mora (4 días gracia) | FR-11, UR-02, CU-04 | 4h | ✅ Completado | 
+| CAVI-TK22 | Servicio generación PDF/A (WeasyPrint + fallback) | FR-12, NFR-07 | 5h | ✅ Completado |
+| CAVI-TK23 | Plantilla Pagaré legal (Ley 176, Código Comercio) | FR-13, CU-03 | 6h | ✅ Completado |
+| CAVI-TK24 | Dashboard semaforización cobranza | UR-02, CU-04 | 5h | ✅ Completado |
+| CAVI-TK25 | Descarga/impresión pagaré | UR-04, FR-12 | 3h | ✅ Completado |
 | CAVI-TK26 | Capacitor + build Android .apk | NFR-05 | 4h | ⏳ Pendiente |
 
 **Detalle de TK21:** reemplazar `mora_insoluto = Decimal('0.00')` en `totales_insolutos()`
