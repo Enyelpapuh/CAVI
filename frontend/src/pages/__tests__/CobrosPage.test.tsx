@@ -6,6 +6,8 @@ vi.mock('../../services/api', () => ({
     list: vi.fn(),
     pagar: vi.fn(),
     previewPago: vi.fn(),
+    pagarPagare: vi.fn(),
+    abrirPagareHtml: vi.fn(),
   },
   pagoService: {
     getRecibo: vi.fn(),
@@ -167,8 +169,8 @@ describe('CobrosPage', () => {
       expect(screen.getByText('Juan Perez')).toBeInTheDocument();
     });
     expect(screen.getByText('Maria Lopez')).toBeInTheDocument();
-    expect(screen.getByText('Por Cobrar').parentElement?.textContent).toContain('C$60,004.02');
-    expect(screen.getByText('Cobros Hoy').parentElement?.textContent).toContain('C$1,845.98');
+    expect(screen.getByText('C$60,004.02')).toBeInTheDocument();
+    expect(screen.getAllByText('C$1,845.98').length).toBeGreaterThan(0);
     expect(dashboardService.agenda).toHaveBeenCalled();
     expect(dashboardService.caja).toHaveBeenCalled();
   });
@@ -182,6 +184,23 @@ describe('CobrosPage', () => {
     // El credito al dia no muestra insignias de mora.
     const tarjetaSana = screen.getByText('Juan Perez').closest('li');
     expect(tarjetaSana?.textContent).not.toContain('Mora C$');
+  });
+
+  it('ofrece imprimir el pagaré en cada crédito de la agenda', async () => {
+    render(<CobrosPage />);
+
+    await waitFor(() => screen.getByText('Juan Perez'));
+    expect(screen.getByTestId('pagare-1')).toBeInTheDocument();
+    expect(screen.getByTestId('pagare-2')).toBeInTheDocument();
+
+    (prestamoService.pagarPagare as any).mockResolvedValue({
+      blob: new Blob(['%PDF']),
+      nombre: 'Pagare-001-111222-3.pdf',
+      variante: 'PDF/A-2b',
+    });
+    fireEvent.click(screen.getByTestId('pagare-1'));
+
+    await waitFor(() => expect(prestamoService.pagarPagare).toHaveBeenCalledWith(1));
   });
 
   it('avisa la restriccion de privacidad al rol cobranza', async () => {

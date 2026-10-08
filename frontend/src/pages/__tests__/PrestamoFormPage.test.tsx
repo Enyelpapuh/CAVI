@@ -10,6 +10,8 @@ vi.mock('../../services/api', () => ({
   },
   prestamoService: {
     create: vi.fn(),
+    pagarPagare: vi.fn(),
+    abrirPagareHtml: vi.fn(),
     simular: vi.fn(),
   },
 }));
@@ -176,5 +178,15 @@ describe('PrestamoFormPage', () => {
     });
 
     await waitFor(() => expect(screen.getByText(/Préstamo #1 creado exitosamente/)).toBeInTheDocument());
+    // El pagaré se puede descargar de inmediato para entregarlo firmado.
+    expect(screen.getByTestId('pagare-1')).toBeInTheDocument();
+
+    (prestamoService.pagarPagare as any).mockResolvedValue({
+      blob: new Blob(['%PDF']),
+      nombre: 'Pagare-001-111222-3.pdf',
+      variante: 'PDF/A-2b',
+    });
+    fireEvent.click(screen.getByTestId('pagare-1'));
+    await waitFor(() => expect(prestamoService.pagarPagare).toHaveBeenCalledWith(1));
   });
 });

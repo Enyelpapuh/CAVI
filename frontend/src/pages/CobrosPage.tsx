@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PagoRecibo } from '../components/PagoRecibo';
+import { BotonPagare } from '../components/BotonPagare';
 import { Card, KpiTile, Button, Icon, Input, Select, Modal, Spinner, EmptyState, StatusBadge } from '../components/ui';
 import { prestamoService, dashboardService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +24,16 @@ const METODOS = [
   { value: 'TRANSFERENCIA', label: 'Transferencia' },
   { value: 'CHEQUE', label: 'Cheque' },
   { value: 'OTRO', label: 'Otro' },
+];
+
+const BANCOS_NICARAGUA = [
+  { value: 'BAC Credomatic', label: 'BAC Credomatic' },
+  { value: 'Banco LAFISE Bancentro', label: 'Banco LAFISE Bancentro' },
+  { value: 'Banpro Grupo Promerica', label: 'Banpro Grupo Promerica' },
+  { value: 'Banco BDF', label: 'Banco BDF' },
+  { value: 'Banco Ficohsa', label: 'Banco Ficohsa' },
+  { value: 'Billetera Móvil (Banpro/BAC)', label: 'Billetera Móvil' },
+  { value: 'Otro Banco', label: 'Otro Banco' },
 ];
 
 /** Desglose de prelación del Art. 3180 que devuelve el preview del backend. */
@@ -82,10 +93,14 @@ export function CobrosPage() {
   const [seleccion, setSeleccion] = useState<CarteraFila | null>(null);
   const [monto, setMonto] = useState('');
   const [metodoPago, setMetodoPago] = useState('EFECTIVO');
+  const [banco, setBanco] = useState('BAC Credomatic');
   const [referencia, setReferencia] = useState('');
+  const [titular, setTitular] = useState('');
+  const [recibidoEfectivo, setRecibidoEfectivo] = useState('');
   const [fechaPago, setFechaPago] = useState(() => new Date().toISOString().slice(0, 10));
   const [preview, setPreview] = useState<PreviewPago | null>(null);
   const [previewCargando, setPreviewCargando] = useState(false);
+  const [errorPagare, setErrorPagare] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorCobro, setErrorCobro] = useState('');
   const [pago, setPago] = useState<Pago | null>(null);
@@ -170,7 +185,10 @@ export function CobrosPage() {
     setSeleccion(fila);
     setMonto('');
     setMetodoPago('EFECTIVO');
+    setBanco('BAC Credomatic');
     setReferencia('');
+    setTitular('');
+    setRecibidoEfectivo('');
     setFechaPago(new Date().toISOString().slice(0, 10));
     setPreview(null);
     setErrorCobro('');
@@ -187,11 +205,16 @@ export function CobrosPage() {
     setSubmitting(true);
     setErrorCobro('');
     try {
+      const refFinal =
+        metodoPago === 'TRANSFERENCIA'
+          ? (banco ? `${banco} · Ref: ${referencia.trim()}${titular.trim() ? ` · Titular: ${titular.trim()}` : ''}` : referencia.trim())
+          : referencia.trim();
+
       const creado = await prestamoService.pagar(seleccion.id, {
         monto,
         fecha_pago: fechaPago,
         metodo_pago: metodoPago,
-        referencia_bancaria: referencia,
+        referencia_bancaria: refFinal,
       });
       setPago(creado);
       setSeleccion(null);
@@ -262,6 +285,12 @@ export function CobrosPage() {
         <p class="mt-3 flex items-center gap-2 text-body-sm text-slate-500">
           <Icon name="lock" size={16} />
           Vista restringida por privacidad (Ley 787): no incluye utilidades ni origen de los fondos.
+        </p>
+      )}
+
+      {errorPagare && (
+        <p class="mt-3 text-body-sm text-red-700" role="alert">
+          {errorPagare}
         </p>
       )}
 
@@ -399,6 +428,13 @@ export function CobrosPage() {
                     >
                       Registrar Cobro
                     </Button>
+                    <BotonPagare
+                      class="mt-2 w-full"
+                      prestamoId={fila.id}
+                      variant="ghost"
+                      label="Imprimir Pagaré"
+                      onError={setErrorPagare}
+                    />
                   </li>
                 ))}
               </ul>
@@ -465,47 +501,171 @@ export function CobrosPage() {
       >
         {seleccion && (
           <div class="space-y-4">
-            <div class="grid gap-3 sm:grid-cols-2">
-              <Input
-                label="Monto a cobrar"
-                value={monto}
-                onInput={setMonto}
-                type="number"
-                step="0.01"
-                min="0.01"
-                prefix="C$"
-                placeholder="0.00"
-                required
-                hint={`Deuda total: ${fmtMonto(seleccion.saldo_deudor)}`}
-              />
-              <Select
-                label="Metodo de pago"
-                value={metodoPago}
-                onChange={setMetodoPago}
-                options={METODOS}
-                required
-              />
-              {metodoPago === 'TRANSFERENCIA' && (
-                <Input
-                  label="Referencia bancaria"
-                  value={referencia}
-                  onInput={setReferencia}
-                  placeholder="No. de transferencia"
+            {/* Canal de Pago con Botones Grandes */}
+            <div>
+              <div class="grid grid-cols-2 gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setMetodoPago('EFECTIVO')}
+                  class={`flex items-center justify-center gap-2 rounded-xl border p-3 text-body-sm font-semibold transition ${
+                    metodoPago === 'EFECTIVO'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-600/20'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon name="payments" size={20} class={metodoPago === 'EFECTIVO' ? 'text-emerald-600' : 'text-slate-400'} />
+                  Efectivo Físico
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMetodoPago('TRANSFERENCIA')}
+                  class={`flex items-center justify-center gap-2 rounded-xl border p-3 text-body-sm font-semibold transition ${
+                    metodoPago === 'TRANSFERENCIA'
+                      ? 'border-blue-600 bg-blue-50 text-blue-900 ring-2 ring-blue-600/20'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon name="account_balance" size={20} class={metodoPago === 'TRANSFERENCIA' ? 'text-blue-600' : 'text-slate-400'} />
+                  Transferencia
+                </button>
+              </div>
+
+              <div class="sr-only">
+                <Select
+                  label="Metodo de pago"
+                  value={metodoPago}
+                  onChange={setMetodoPago}
+                  options={METODOS}
                   required
                 />
-              )}
-              <Input label="Fecha del pago" value={fechaPago} onInput={setFechaPago} type="date" required />
+              </div>
             </div>
 
+            {/* Monto con Sugerencias Rápidas a un Toque */}
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="text-label-md font-medium text-slate-700">Importe a asentar</span>
+                <span class="text-xs text-slate-500">
+                  Deuda total: <strong class="text-slate-800">{fmtMonto(seleccion.saldo_deudor)}</strong>
+                </span>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                {Number(seleccion.cuota) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMonto(String(Number(seleccion.cuota)))}
+                    class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"
+                  >
+                    + Pagar Cuota ({fmtMonto(seleccion.cuota)})
+                  </button>
+                )}
+                {Number(seleccion.saldo_deudor) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMonto(String(Number(seleccion.saldo_deudor)))}
+                    class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"
+                  >
+                    + Liquidar Total ({fmtMonto(seleccion.saldo_deudor)})
+                  </button>
+                )}
+              </div>
+
+              <div class="grid gap-3 sm:grid-cols-2 pt-1">
+                <Input
+                  label="Monto a cobrar"
+                  value={monto}
+                  onInput={setMonto}
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  prefix="C$"
+                  placeholder="0.00"
+                  required
+                  hint={minimoCiclo > 0 ? `Mínimo aceptado: ${fmtMonto(minimoCiclo)}` : undefined}
+                />
+                <Input
+                  label="Fecha del pago"
+                  value={fechaPago}
+                  onInput={setFechaPago}
+                  type="date"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Detalles según el Método de Pago */}
+            {metodoPago === 'EFECTIVO' ? (
+              <div class="rounded-xl border border-slate-100 bg-slate-50/80 p-3 space-y-2">
+                <div class="flex items-center gap-2 text-label-xs font-bold uppercase tracking-wider text-slate-500">
+                  <Icon name="payments" size={16} class="text-emerald-600" />
+                  Efectivo Físico (Afecta Arqueo Diario)
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2 items-center">
+                  <Input
+                    label="Efectivo entregado por cliente"
+                    value={recibidoEfectivo}
+                    onInput={setRecibidoEfectivo}
+                    type="number"
+                    step="0.01"
+                    prefix="C$"
+                    placeholder="Para calcular vuelto"
+                  />
+                  {Number(recibidoEfectivo) > montoNum && montoNum > 0 ? (
+                    <div class="flex flex-col justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <span class="text-xs font-semibold text-emerald-800">Cambio / Vuelto a entregar</span>
+                      <span class="tnum text-lg font-bold text-emerald-700">
+                        {fmtMonto(Number(recibidoEfectivo) - montoNum)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div class="text-xs text-slate-500">
+                      El dinero ingresa directamente a caja física para el arqueo del cobrador.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : metodoPago === 'TRANSFERENCIA' ? (
+              <div class="rounded-xl border border-blue-100 bg-blue-50/60 p-3.5 space-y-3">
+                <div class="flex items-center gap-2 text-label-xs font-bold uppercase tracking-wider text-blue-900">
+                  <Icon name="account_balance" size={16} class="text-blue-600" />
+                  Detalle de la Transacción Bancaria
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <Select
+                    label="Banco receptor"
+                    value={banco}
+                    onChange={setBanco}
+                    options={BANCOS_NICARAGUA}
+                    required
+                  />
+                  <Input
+                    label="Referencia bancaria"
+                    value={referencia}
+                    onInput={setReferencia}
+                    placeholder="No. de transacción o voucher"
+                    required
+                    hint="Comprobante único emitido por el banco"
+                  />
+                </div>
+                <Input
+                  label="Titular / Remitente (opcional)"
+                  value={titular}
+                  onInput={setTitular}
+                  placeholder="Nombre de quien realizó la transferencia (si fue un tercero)"
+                  hint="Útil para conciliar cuando un familiar paga por el cliente"
+                />
+              </div>
+            ) : null}
+
+            {/* Imputación Prelación Art. 3180 */}
             {previewCargando && (
               <p class="flex items-center gap-2 text-body-sm text-slate-500">
-                <Spinner size={16} /> Calculando imputacion...
+                <Spinner size={16} /> Calculando imputación legal...
               </p>
             )}
 
-            {preview && !previewCargando && (
-              <Prelacion preview={preview} />
-            )}
+            {preview && !previewCargando && <Prelacion preview={preview} />}
 
             {validacion.map((mensaje) => (
               <p key={mensaje} class="flex items-start gap-2 text-body-sm text-red-600">
@@ -529,7 +689,7 @@ export function CobrosPage() {
             )}
 
             <p class="text-body-sm text-slate-500">
-              Art. 3180 C.C.: el pago se imputa a mora, luego a intereses y por ultimo al capital.
+              Art. 3180 C.C.: el pago se imputa en orden estricto: mora, luego intereses corrientes y finalmente capital insoluto.
             </p>
           </div>
         )}

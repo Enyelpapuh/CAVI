@@ -18,6 +18,37 @@ const FORM_VACIO: Partial<Cliente> = {
   actividad_economica: '',
 };
 
+const ACTIVIDADES_RAPIDAS = [
+  'Comercio / Pulpería',
+  'Venta de Ropa',
+  'Comedor / Alimentos',
+  'Transporte / Taxi',
+  'Taller / Oficios',
+  'Empleado',
+];
+
+/** Formatea automáticamente la cédula nicaragüense: 001-280490-0001A */
+function formatearCedula(val: string): string {
+  const v = val.trim();
+  if (v.includes('-')) return v.toUpperCase();
+  const limpio = v.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if (limpio.length <= 3) return limpio;
+  if (limpio.length <= 9) return `${limpio.slice(0, 3)}-${limpio.slice(3)}`;
+  if (limpio.length <= 13) return `${limpio.slice(0, 3)}-${limpio.slice(3, 9)}-${limpio.slice(9)}`;
+  return `${limpio.slice(0, 3)}-${limpio.slice(3, 9)}-${limpio.slice(9, 13)}${limpio.slice(13, 14)}`;
+}
+
+/** Formatea automáticamente el teléfono nicaragüense a 8 dígitos: XXXX-XXXX */
+function formatearTelefono(val: string): string {
+  const v = val.trim();
+  if (v.includes('-')) return v;
+  const nums = v.replace(/\D/g, '');
+  if (nums.length > 4 && nums.length <= 8) {
+    return `${nums.slice(0, 4)}-${nums.slice(4)}`;
+  }
+  return v;
+}
+
 export function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,11 +82,11 @@ export function ClientesPage() {
 
   const validar = (): boolean => {
     const errores: Record<string, string> = {};
-    if (!formData.cedula) errores.cedula = 'La cédula es obligatoria';
-    if (!formData.nombres) errores.nombres = 'Los nombres son obligatorios';
-    if (!formData.apellidos) errores.apellidos = 'Los apellidos son obligatorios';
-    if (!formData.telefono) errores.telefono = 'El teléfono es obligatorio';
-    if (!formData.direccion) errores.direccion = 'La dirección es obligatoria';
+    if (!formData.cedula?.trim()) errores.cedula = 'La cédula es obligatoria';
+    if (!formData.nombres?.trim()) errores.nombres = 'Los nombres son obligatorios';
+    if (!formData.apellidos?.trim()) errores.apellidos = 'Los apellidos son obligatorios';
+    if (!formData.telefono?.trim()) errores.telefono = 'El teléfono es obligatorio';
+    if (!formData.direccion?.trim()) errores.direccion = 'La dirección es obligatoria';
     setFormErrors(errores);
     return Object.keys(errores).length === 0;
   };
@@ -116,7 +147,14 @@ export function ClientesPage() {
   };
 
   const cambiar = (campo: keyof Cliente, valor: string) => {
-    setFormData((prev) => ({ ...prev, [campo]: valor }));
+    let valorFinal = valor;
+    if (campo === 'cedula' && !editing) {
+      valorFinal = formatearCedula(valor);
+    } else if (campo === 'telefono') {
+      valorFinal = formatearTelefono(valor);
+    }
+
+    setFormData((prev) => ({ ...prev, [campo]: valorFinal }));
     if (formErrors[campo as string]) {
       setFormErrors((prev) => ({ ...prev, [campo as string]: '' }));
     }
@@ -128,15 +166,20 @@ export function ClientesPage() {
     {
       key: 'cedula',
       header: 'Cédula',
-      width: '130px',
-      render: (cliente) => <span class="tnum font-medium text-slate-900">{cliente.cedula}</span>,
+      width: '140px',
+      render: (cliente) => (
+        <span class="tnum inline-flex items-center gap-1 font-mono text-body-sm font-semibold text-slate-900">
+          <Icon name="badge" size={14} class="text-slate-400" />
+          {cliente.cedula}
+        </span>
+      ),
     },
     {
       key: 'nombre',
       header: 'Nombre',
       render: (cliente) => (
         <div class="min-w-0">
-          <p class="truncate font-medium text-slate-900">
+          <p class="truncate font-semibold text-slate-900">
             {cliente.nombres} {cliente.apellidos}
           </p>
           <p class="truncate text-body-sm text-slate-500">{cliente.direccion}</p>
@@ -146,8 +189,17 @@ export function ClientesPage() {
     {
       key: 'telefono',
       header: 'Teléfono',
-      width: '130px',
-      render: (cliente) => <span class="tnum text-slate-700">{cliente.telefono}</span>,
+      width: '140px',
+      render: (cliente) => (
+        <a
+          href={`tel:${cliente.telefono.replace(/\D/g, '')}`}
+          class="tnum inline-flex items-center gap-1.5 font-medium text-slate-700 hover:text-green-700"
+          title="Llamar al cliente"
+        >
+          <Icon name="phone" size={14} class="text-slate-400" />
+          {cliente.telefono}
+        </a>
+      ),
     },
     {
       key: 'actividad',
@@ -165,7 +217,7 @@ export function ClientesPage() {
         <span
           class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-label-xs uppercase ${
             cliente.activo
-              ? 'border-green-200 bg-green-50 text-green-600'
+              ? 'border-green-200 bg-green-50 text-green-700 font-semibold'
               : 'border-slate-200 bg-slate-100 text-slate-500'
           }`}
         >
@@ -181,7 +233,7 @@ export function ClientesPage() {
       key: 'acciones',
       header: 'Acciones',
       align: 'right',
-      width: '190px',
+      width: '180px',
       render: (cliente) => (
         <div class="flex justify-end gap-1">
           <Button variant="ghost" size="sm" icon="edit" onClick={() => handleEdit(cliente)}>
@@ -288,9 +340,10 @@ export function ClientesPage() {
       <Modal
         open={showForm}
         onClose={cerrarForm}
-        title={editing ? 'Editar Cliente' : 'Nuevo Cliente'}
-        subtitle={editing ? `Cédula ${editing.cedula} no se puede modificar` : 'Datos del prestatario'}
+        title={editing ? 'Editar Cliente' : 'Registrar Nuevo Cliente'}
+        subtitle={editing ? `Cédula ${editing.cedula} no se puede modificar` : 'Complete la información principal de identidad y contacto'}
         icon="person"
+        size="md"
         footer={
           <>
             <Button variant="ghost" onClick={cerrarForm} disabled={submitting}>
@@ -303,51 +356,100 @@ export function ClientesPage() {
         }
       >
         <form id="form-cliente" onSubmit={handleSubmit} class="space-y-4">
-          <Input
-            label="Cédula"
-            value={formData.cedula || ''}
-            onInput={(valor) => cambiar('cedula', valor)}
-            disabled={!!editing}
-            required
-            error={formErrors.cedula}
-            hint={editing ? undefined : 'Formato 000-000000-0'}
-          />
-          <div class="grid gap-4 sm:grid-cols-2">
+          {/* Bloque 1: Identificación de la Cédula */}
+          <div class="rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 space-y-3">
+            <div class="flex items-center gap-2 text-label-xs uppercase font-bold tracking-wider text-slate-500">
+              <Icon name="badge" size={16} class="text-slate-400" />
+              Datos de Cédula de Identidad
+            </div>
+
             <Input
-              label="Nombres"
-              value={formData.nombres || ''}
-              onInput={(valor) => cambiar('nombres', valor)}
+              label="Cédula"
+              value={formData.cedula || ''}
+              onInput={(valor) => cambiar('cedula', valor)}
+              disabled={!!editing}
               required
-              error={formErrors.nombres}
+              placeholder="001-000000-0000A"
+              error={formErrors.cedula}
+              hint={editing ? undefined : 'Formato: 001-XXXXXX-XXXXX (14 caracteres)'}
             />
+
+            <div class="grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Nombres"
+                value={formData.nombres || ''}
+                onInput={(valor) => cambiar('nombres', valor)}
+                placeholder="Nombres según cédula"
+                required
+                error={formErrors.nombres}
+              />
+              <Input
+                label="Apellidos"
+                value={formData.apellidos || ''}
+                onInput={(valor) => cambiar('apellidos', valor)}
+                placeholder="Apellidos según cédula"
+                required
+                error={formErrors.apellidos}
+              />
+            </div>
+          </div>
+
+          {/* Bloque 2: Contacto Principal y Domicilio */}
+          <div class="rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 space-y-3">
+            <div class="flex items-center gap-2 text-label-xs uppercase font-bold tracking-wider text-slate-500">
+              <Icon name="contact_phone" size={16} class="text-slate-400" />
+              Contacto Principal y Domicilio
+            </div>
+
             <Input
-              label="Apellidos"
-              value={formData.apellidos || ''}
-              onInput={(valor) => cambiar('apellidos', valor)}
+              label="Teléfono"
+              value={formData.telefono || ''}
+              onInput={(valor) => cambiar('telefono', valor)}
+              type="tel"
+              placeholder="Ej. 8888-8888"
               required
-              error={formErrors.apellidos}
+              error={formErrors.telefono}
+              hint="Número celular o WhatsApp para notificaciones de cobro"
+            />
+
+            <Textarea
+              label="Dirección"
+              value={formData.direccion || ''}
+              onInput={(valor) => cambiar('direccion', valor)}
+              placeholder="Barrio, calle, número de casa o punto de referencia exacto"
+              required
+              error={formErrors.direccion}
+              rows={2}
             />
           </div>
-          <Input
-            label="Teléfono"
-            value={formData.telefono || ''}
-            onInput={(valor) => cambiar('telefono', valor)}
-            type="text"
-            required
-            error={formErrors.telefono}
-          />
-          <Textarea
-            label="Dirección"
-            value={formData.direccion || ''}
-            onInput={(valor) => cambiar('direccion', valor)}
-            required
-            error={formErrors.direccion}
-          />
-          <Input
-            label="Actividad Económica"
-            value={formData.actividad_economica || ''}
-            onInput={(valor) => cambiar('actividad_economica', valor)}
-          />
+
+          {/* Bloque 3: Actividad Económica con accesos rápidos */}
+          <div class="space-y-2 pt-1">
+            <Input
+              label="Actividad Económica"
+              value={formData.actividad_economica || ''}
+              onInput={(valor) => cambiar('actividad_economica', valor)}
+              placeholder="Ej. Pulpería, Comercio, Transporte..."
+              hint="Opcional: rubro o fuente de ingresos del prestatario"
+            />
+
+            <div class="flex flex-wrap gap-1.5 pt-1">
+              {ACTIVIDADES_RAPIDAS.map((act) => (
+                <button
+                  type="button"
+                  key={act}
+                  onClick={() => cambiar('actividad_economica', act)}
+                  class={`rounded-full border px-2.5 py-1 text-label-xs transition-colors ${
+                    formData.actividad_economica === act
+                      ? 'border-green-600 bg-green-50 font-semibold text-green-700'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  + {act}
+                </button>
+              ))}
+            </div>
+          </div>
         </form>
       </Modal>
     </Layout>

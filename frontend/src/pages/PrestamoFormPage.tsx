@@ -14,6 +14,7 @@ import {
   type Columna,
 } from '../components/ui';
 import { clienteService, fondoService, prestamoService } from '../services/api';
+import { BotonPagare } from '../components/BotonPagare';
 import { fmtMonto, fmtNumero, fmtFecha, iniciales } from '../lib/format';
 import type { Cliente, Fondo, PeriodoCuota, Prestamo, Proyeccion } from '../types';
 
@@ -356,6 +357,12 @@ export function PrestamoFormPage() {
             {createdPrestamo.cliente_nombre} · {fmtMonto(createdPrestamo.monto_principal)}
           </p>
           <div class="mt-6 flex flex-wrap justify-center gap-3">
+            <BotonPagare
+              prestamoId={createdPrestamo.id}
+              variant="primary"
+              label="Descargar Pagaré"
+              onError={setServerError}
+            />
             <Button icon="add" onClick={resetForm}>
               Nuevo Préstamo
             </Button>
@@ -363,6 +370,14 @@ export function PrestamoFormPage() {
               Ir a Cobranza
             </Button>
           </div>
+          <p class="mt-3 text-body-sm text-slate-500">
+            Entregue el pagaré firmado al cliente: es el título valor del crédito (CAVI-TK25).
+          </p>
+          {serverError && (
+            <p class="mt-2 text-body-sm text-red-700" role="alert">
+              {serverError}
+            </p>
+          )}
         </Card>
       ) : (
         <div class="grid gap-4 lg:grid-cols-3">
