@@ -41,7 +41,7 @@ interface InputProps {
   label: string;
   value: string;
   onInput: (value: string) => void;
-  type?: 'text' | 'number' | 'date' | 'email' | 'password';
+  type?: 'text' | 'number' | 'date' | 'email' | 'password' | 'tel';
   placeholder?: string;
   error?: string;
   hint?: string;

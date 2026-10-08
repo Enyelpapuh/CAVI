@@ -9,22 +9,22 @@ interface ConfiguracionEstado {
 const ESTADOS: Record<EstadoEfectivo, ConfiguracionEstado> = {
   AL_DIA: {
     label: 'Al Día',
-    clases: 'bg-green-50 text-green-600 border-green-200',
-    punto: 'bg-green-600',
+    clases: 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20',
+    punto: 'bg-green-500',
   },
   EN_GRACIA: {
     label: 'En Gracia',
-    clases: 'bg-yellow-50 text-amber-700 border-yellow-200',
-    punto: 'bg-yellow-500',
+    clases: 'bg-yellow-50 text-amber-800 ring-1 ring-inset ring-amber-600/20',
+    punto: 'bg-amber-500',
   },
   EN_MORA: {
     label: 'En Mora',
-    clases: 'bg-red-50 text-red-600 border-red-200',
-    punto: 'bg-red-600',
+    clases: 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/10',
+    punto: 'bg-red-500',
   },
   CANCELADO: {
     label: 'Liquidado',
-    clases: 'bg-slate-100 text-slate-500 border-slate-200',
+    clases: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-500/10',
     punto: 'bg-slate-400',
   },
 };
@@ -46,7 +46,7 @@ export function StatusBadge({ estado, diasAtraso, showDot = true, class: classNa
 
   return (
     <span
-      class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-label-xs uppercase ${config.clases} ${className}`}
+      class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-label-xs uppercase ${config.clases} ${className}`}
     >
       {showDot && <span class={`h-1.5 w-1.5 rounded-full ${config.punto}`} aria-hidden="true" />}
       {detalle}

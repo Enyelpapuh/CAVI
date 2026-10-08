@@ -52,9 +52,10 @@ describe('Sidebar', () => {
     rol = 'ADMINISTRADOR';
   });
 
-  it('marca los modulos de sprints futuros como no disponibles', () => {
+  it('muestra los modulos del sistema con sus enlaces correspondientes', () => {
     render(conToast(<Sidebar />));
-    expect(screen.getByText('Estados de Cuenta').closest('button')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Estados de Cuenta').closest('a')).toHaveAttribute('href', '#/reportes/estados-cuenta');
+    expect(screen.getByText('Créditos y Abonos').closest('a')).toHaveAttribute('href', '#/cobros');
   });
 });
 
@@ -90,7 +91,7 @@ describe('Layout', () => {
     );
     expect(screen.getByText('Contenido')).toBeInTheDocument();
     expect(screen.getByLabelText('Abrir menú de navegación')).toBeInTheDocument();
-    expect(screen.getByText('Panel de Control')).toBeInTheDocument();
+    expect(screen.getAllByText('Panel de Control').length).toBeGreaterThan(0);
   });
 
   it('omite sidebar y topbar cuando no hay usuario (pantalla de login)', () => {

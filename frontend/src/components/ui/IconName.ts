@@ -18,6 +18,7 @@ export type IconName =
   | 'cloud_done'
   | 'credit_card'
   | 'dashboard'
+  | 'description'
   | 'desktop_windows'
   | 'download'
   | 'edit'

@@ -158,16 +158,16 @@ export interface Dashboard {
   creditos_vigentes: {
     cantidad: number;
     saldo_total: string;
-    porcentaje_sano: string;
-    al_dia: number;
-    en_mora: number;
-    en_gracia: number;
-    saldo_en_mora: string;
-    mora_total: string;
-    interes_vencido_total: string;
+    porcentaje_sano?: string;
+    al_dia?: number;
+    en_mora?: number;
+    en_gracia?: number;
+    saldo_en_mora?: string;
+    mora_total?: string;
+    interes_vencido_total?: string;
   };
-  /** Semáforo de cobranza del panel (TK24). */
-  cartera_semaforo: {
+  /** Semáforo de cobranza (opcional, en desuso en el panel principal). */
+  cartera_semaforo?: {
     al_dia: number;
     en_gracia: number;
     en_mora: number;
@@ -176,7 +176,7 @@ export interface Dashboard {
     mora_total: string;
   };
   abonos_del_dia: { monto: string; cantidad: number };
-  cartera: CarteraFila[];
+  cartera?: CarteraFila[];
 }
 
 export interface CajaCobrador {

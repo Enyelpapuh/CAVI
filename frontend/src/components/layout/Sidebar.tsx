@@ -1,4 +1,4 @@
-import { Link } from 'preact-router/match';
+import { useRouter } from '../../lib/router';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../ui/Icon';
 import { useToast } from '../ui/Toast';
@@ -17,6 +17,7 @@ const ROL_LABEL: Record<string, string> = {
 
 export function Sidebar({ onNavegar }: { onNavegar?: () => void }) {
   const { user, logout } = useAuth();
+  const { path: currentPath, navigate } = useRouter();
   const toast = useToast();
   const secciones = seccionesVisibles(user?.rol);
 
@@ -39,13 +40,16 @@ export function Sidebar({ onNavegar }: { onNavegar?: () => void }) {
               <p class="px-3 py-2 text-label-xs uppercase tracking-wider text-slate-500">{seccion.titulo}</p>
               {seccion.items.map((item) =>
                 item.path && !item.pendiente ? (
-                  <Link
+                  <a
                     key={item.label}
-                    path={item.path}
-                    onClick={onNavegar}
-                    activeClassName={LINK_ACTIVO}
-                    class={`${LINK_BASE} ${LINK_INACTIVO}`}
-                    aria-current={undefined}
+                    href={`#${item.path}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate(item.path!);
+                      if (onNavegar) onNavegar();
+                    }}
+                    class={`${LINK_BASE} ${currentPath === item.path ? LINK_ACTIVO : LINK_INACTIVO}`}
+                    aria-current={currentPath === item.path ? 'page' : undefined}
                   >
                     <span class="flex items-center gap-3">
                       <Icon name={item.icon} size={20} />
@@ -56,7 +60,7 @@ export function Sidebar({ onNavegar }: { onNavegar?: () => void }) {
                         {item.badge}
                       </span>
                     )}
-                  </Link>
+                  </a>
                 ) : (
                   <button
                     key={item.label}

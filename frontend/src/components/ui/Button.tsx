@@ -7,17 +7,17 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANTES: Record<ButtonVariant, string> = {
   primary:
-    'bg-green-600 text-white hover:bg-green-700 active:scale-[0.99] focus-visible:ring-green-600/30',
+    'bg-slate-900 text-white hover:bg-slate-800 active:scale-[0.99] focus-visible:ring-slate-900',
   secondary:
-    'border border-slate-200 bg-white text-slate-900 hover:bg-slate-100 active:scale-[0.99] focus-visible:ring-slate-400/30',
-  ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-slate-400/30',
-  destructive: 'bg-red-600 text-white hover:bg-red-700 active:scale-[0.99] focus-visible:ring-red-600/30',
+    'bg-slate-100 text-slate-900 hover:bg-slate-200 active:scale-[0.99] focus-visible:ring-slate-400',
+  ghost: 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-400',
+  destructive: 'bg-red-50 text-red-700 hover:bg-red-100 active:scale-[0.99] focus-visible:ring-red-600',
 };
 
 const TAMANOS: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-label-sm gap-1.5',
-  md: 'h-10 px-4 text-label-md gap-2',
-  lg: 'h-12 px-5 text-body-lg gap-2',
+  sm: 'h-9 px-4 text-sm gap-2 rounded-lg',
+  md: 'h-11 px-5 text-sm gap-2 rounded-xl',
+  lg: 'h-12 px-6 text-base gap-3 rounded-xl',
 };
 
 export function buttonClasses(

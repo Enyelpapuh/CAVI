@@ -34,16 +34,16 @@ export const SECCIONES_NAV: SeccionNav[] = [
   {
     titulo: 'Reportes',
     items: [
-      { label: 'Estados de Cuenta', icon: 'receipt_long', roles: SOLO_ADMIN, pendiente: 'Sprint 3' },
-      { label: 'Arqueo y Liquidación', icon: 'point_of_sale', roles: SOLO_ADMIN, pendiente: 'Sprint 3' },
+      { path: '/reportes/estados-cuenta', label: 'Estados de Cuenta', icon: 'receipt_long', roles: SOLO_ADMIN },
+      { path: '/reportes/arqueo', label: 'Arqueo y Liquidación', icon: 'point_of_sale', roles: SOLO_ADMIN },
     ],
   },
   {
     titulo: 'Sistema y Seguridad',
     items: [
-      { label: 'Usuarios', icon: 'group', roles: SOLO_ADMIN, pendiente: 'Sprint 3' },
-      { label: 'Permisos', icon: 'shield', roles: SOLO_ADMIN, pendiente: 'Sprint 3' },
-      { label: 'App Settings', icon: 'settings', roles: SOLO_ADMIN, pendiente: 'Sprint 3' },
+      { path: '/seguridad/usuarios', label: 'Usuarios', icon: 'group', roles: SOLO_ADMIN },
+      { path: '/seguridad/permisos', label: 'Permisos', icon: 'shield', roles: SOLO_ADMIN },
+      { path: '/seguridad/settings', label: 'App Settings', icon: 'settings', roles: SOLO_ADMIN },
     ],
   },
 ];

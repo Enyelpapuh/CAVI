@@ -3,6 +3,7 @@ import type {
   AuthTokens,
   ApiError,
   LoginCredentials,
+  Usuario,
   Cliente,
   Fondo,
   Prestamo,
@@ -121,6 +122,29 @@ export const authService = {
   refresh: async (): Promise<{ access: string }> => {
     const refreshToken = localStorage.getItem('refresh_token');
     const response = await api.post<{ access: string }>('/auth/refresh/', { refresh: refreshToken });
+    return response.data;
+  },
+};
+
+// Usuario endpoints
+export const usuarioService = {
+  list: async (params?: { search?: string; page?: number }) => {
+    const response = await api.get('/usuarios/', { params });
+    return response.data;
+  },
+
+  create: async (data: Omit<Usuario, 'id' | 'creado_en' | 'actualizado_en' | 'ultimo_login'> & { password?: string }): Promise<Usuario> => {
+    const response = await api.post('/usuarios/', data);
+    return response.data;
+  },
+
+  get: async (id: number): Promise<Usuario> => {
+    const response = await api.get(`/usuarios/${id}/`);
+    return response.data;
+  },
+
+  update: async (id: number, data: Partial<Usuario> & { password?: string }): Promise<Usuario> => {
+    const response = await api.patch(`/usuarios/${id}/`, data);
     return response.data;
   },
 };
@@ -246,10 +270,41 @@ export const prestamoService = {
     const response = await api.post(`/prestamos/${id}/pagos/`, data);
     return response.data;
   },
+
+  /**
+   * Descarga el pagaré legal (TK25).
+   *
+   * Devuelve el PDF como blob junto con el nombre de archivo que impone el
+   * servidor y la variante real del PDF (`PDF/A-2b` solo con WeasyPrint).
+   */
+  pagarPagare: async (id: number): Promise<{ blob: Blob; nombre: string; variante: string }> => {
+    const response = await api.get(`/prestamos/${id}/pagare/`, { responseType: 'blob' });
+    const disposicion = String(response.headers['content-disposition'] ?? '');
+    const coincidencia = /filename="?([^";]+)"?/.exec(disposicion);
+    return {
+      blob: response.data as Blob,
+      nombre: coincidencia?.[1] ?? `Pagare-${id}.pdf`,
+      variante: String(response.headers['x-pdf-variante'] ?? 'PDF'),
+    };
+  },
+
+  /** Abre el pagaré en HTML para imprimirlo sin pasar por el PDF. */
+  abrirPagareHtml: async (id: number): Promise<string> => {
+    const response = await api.get(`/prestamos/${id}/pagare/`, {
+      params: { formato: 'html' },
+      responseType: 'text',
+    });
+    return response.data as string;
+  },
 };
 
 // Pago endpoints
 export const pagoService = {
+  list: async (params?: { page?: number; prestamo?: number; fecha?: string; usuario?: number }) => {
+    const response = await api.get('/pagos/', { params });
+    return response.data;
+  },
+
   getRecibo: async (id: number): Promise<Pago> => {
     const response = await api.get(`/pagos/${id}/`);
     return response.data;

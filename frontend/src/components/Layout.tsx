@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { useRouter } from 'preact-router';
+import { useRouter } from '../lib/router';
 import { useAuth } from '../context/AuthContext';
 import { Sidebar } from './layout/Sidebar';
 import { Topbar } from './layout/Topbar';
@@ -14,10 +14,9 @@ interface LayoutProps {
 
 export function Layout({ children, titulo }: LayoutProps) {
   const { user } = useAuth();
-  const [ruta] = useRouter();
+  const { path: rutaActual } = useRouter();
   const [menuAbierto, setMenuAbierto] = useState(false);
 
-  const rutaActual = (ruta?.url ?? '/').split('?')[0] || '/';
   const encabezado = titulo ?? TITULOS_RUTA[rutaActual] ?? 'CAVI';
 
   useEffect(() => {
