@@ -1,0 +1,15 @@
+{
+  "appId": "com.cavi.app",
+  "appName": "CAVI",
+  "bundledWebRuntime": false,
+  "webDir": "dist",
+  "npmClient": "npm",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  },
+  "server": {
+    "cleartext": true
+  }
+}

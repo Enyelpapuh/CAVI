@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CAVI</string>
+    <string name="title_activity_main">CAVI</string>
+    <string name="package_name">com.cavi.app</string>
+    <string name="custom_url_scheme">com.cavi.app</string>
+</resources>
