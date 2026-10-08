@@ -176,7 +176,7 @@ Este diagrama ilustra cómo el sistema asegura el principio ACID cuando un prés
 ```mermaid
 sequenceDiagram
     actor Admin
-    participant UI as Frontend (Preact)
+    participant UI as Frontend
     participant API as PrestamoViewSet
     participant DB as Base de Datos
 
@@ -198,7 +198,7 @@ sequenceDiagram
         end
     end
     API->>DB: INSERT Prestamo (Cabecera)
-    API->>DB: INSERT PrestamoFondoDetalle (Cálculo exacto de P_i)
+    API->>DB: INSERT PrestamoFondoDetalle
     DB-->>API: COMMIT TRANSACTION
     deactivate DB
     API-->>UI: 201 Created (Préstamo generado)
@@ -212,7 +212,7 @@ Representación de la aplicación de la prelación (Ley 176) y la posterior dist
 ```mermaid
 sequenceDiagram
     actor Cobrador
-    participant UI as Frontend (Preact)
+    participant UI as Frontend
     participant API as PagoViewSet
     participant Motor as CobroService
     participant DB as Base de Datos
