@@ -7,10 +7,28 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies and build outputs
 node_modules
 dist
 dist-ssr
 *.local
+
+# Testing & Coverage
+coverage/
+.vitest/
+test-results/
+playwright-report/
+blob-report/
+
+# Capacitor & Mobile builds
+android/.gradle/
+android/**/build/
+android/local.properties
+android/app/src/main/assets/public
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+*.apk
+*.aab
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +40,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+

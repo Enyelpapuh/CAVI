@@ -1,47 +1,150 @@
-# Byte-compiled / optimized / DLL files
+# ==============================================================================
+# Byte-compiled / optimized / DLL files (Python)
+# ==============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
 
-# Django
+# ==============================================================================
+# Django & Base de datos local
+# ==============================================================================
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 media/
 
-# Virtual environments
+# ==============================================================================
+# Entornos virtuales & Variables de entorno
+# ==============================================================================
 venv/
 env/
+.venv/
 .env
 .env.local
 .env.*.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-
-# Documentation
-stitch_cavi_microcr_ditos_platform/
-# Frontend
-frontend/node_modules/
-frontend/dist/
 frontend/.env
 frontend/.env.local
 
-# Misc
-*.pyc
-*.pyo
-*.pyd
+# ==============================================================================
+# Frontend & Dependencias Node
+# ==============================================================================
+node_modules/
+**/node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# ==============================================================================
+# Pruebas generales & Cobertura (Backend & Frontend)
+# ==============================================================================
+# Python / Pytest / Coverage
+.coverage
+.coverage.*
+coverage/
+**/coverage/
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+*.test.log
+
+# Frontend (Vitest / Jest / Playwright / Cypress)
+test-results/
+playwright-report/
+blob-report/
+cypress/videos/
+cypress/screenshots/
+.vitest/
+
+# ==============================================================================
+# Capacitor & Móvil (Android / iOS) - Compilados y Generados
+# ==============================================================================
+# Binarios y paquetes compilados
+*.apk
+*.aab
+*.ap_
+*.aar
+*.dex
+*.class
+*.ipa
+
+# Gradle & Android build outputs
+.gradle/
+**/.gradle/
+build/
+**/build/
+bin/
+gen/
+out/
+captures/
+.navigation/
+local.properties
+**/local.properties
+.externalNativeBuild
+.cxx/
+**/.cxx/
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+*.hprof
+
+# Claves de firma (Keystores - Seguridad)
+*.jks
+*.keystore
+
+# Copias y archivos generados por Capacitor sync / copy
+**/android/app/src/main/assets/public
+**/android/app/src/main/assets/public/
+**/android/app/src/main/assets/capacitor.config.json
+**/android/app/src/main/assets/capacitor.plugins.json
+**/android/app/src/main/res/xml/config.xml
+**/capacitor-cordova-android-plugins/
+
+# iOS (si se compila para iOS en el futuro)
+**/ios/App/public
+**/ios/App/public/
+**/ios/App/Pods/
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+DerivedData/
+
+# ==============================================================================
+# IDEs & Editores
+# ==============================================================================
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ==============================================================================
+# Sistema Operativo
+# ==============================================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ==============================================================================
+# Documentación / Diseños Stitch temporales
+# ==============================================================================
+stitch_cavi_microcr_ditos_platform/
