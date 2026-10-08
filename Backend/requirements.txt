@@ -9,3 +9,10 @@ python-dotenv==1.0.1
 psycopg2-binary==2.9.10
 pytest==9.1.1
 pytest-django==4.14.0
+
+# Pagaré legal PDF/A (CAVI-TK22).
+# weasyprint genera PDF/A-2b conforme, pero necesita las librerías nativas
+# Pango/Cairo (GTK3-Runtime en Windows). Si no están, el servicio usa xhtml2pdf
+# como motor alterno puro-Python y el PDF sale sin conformidad PDF/A.
+weasyprint==70.0
+xhtml2pdf==0.2.21

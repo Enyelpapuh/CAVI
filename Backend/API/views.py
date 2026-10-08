@@ -6,6 +6,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum, F
+from django.http import HttpResponse
 from decimal import Decimal
 from .models import (
     Usuario, Cliente, Fondo, MovimientoFondo, Prestamo, PrestamoFondoDetalle, Pago
@@ -22,6 +23,8 @@ from .permissions import EsAdministrador
 from .services.amortizacion import generar_proyeccion, validar_tasa
 from .services.dashboard import resumen_dashboard, caja_de_usuario, agenda_cobrador
 from .services.pagos import aplicar_pago, simular_pago
+from .services.pagare import html_pagare, pdf_pagare
+from .services.pdf import MotorPdfNoDisponible, es_pdf_a, motor_descripcion, nombre_archivo_pagare
 
 Usuario = get_user_model()
 
@@ -350,6 +353,33 @@ class PrestamoViewSet(viewsets.ModelViewSet):
         output['exceso_no_aplicado'] = str(info['exceso_no_aplicado'])
         return Response(output, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'])
+    def pagare(self, request, pk=None):
+        """Descarga el pagaré legal en PDF (o HTML con `?formato=html`)."""
+        prestamo = self.get_object()
+        usuario = getattr(request.user, 'nombre_completo', '') or str(request.user)
+
+        if request.query_params.get('formato') == 'html':
+            return HttpResponse(html_pagare(prestamo, usados_por=usuario), content_type='text/html')
+
+        try:
+            contenido = pdf_pagare(prestamo, usados_por=usuario)
+        except MotorPdfNoDisponible as exc:
+            # 503: el HTML sigue disponible para imprimir desde el navegador.
+            return Response(
+                {'detail': str(exc), 'motor_pdf': motor_descripcion(),
+                 'html_disponible': True},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        respuesta = HttpResponse(contenido, content_type='application/pdf')
+        respuesta['Content-Disposition'] = (
+            f'attachment; filename="{nombre_archivo_pagare(prestamo.cliente)}"'
+        )
+        # Informa al cliente si el documento cumple PDF/A: solo WeasyPrint lo logra.
+        respuesta['X-PDF-Variante'] = 'PDF/A-2b' if es_pdf_a() else 'PDF-1.4'
+        return respuesta
+
 
 class PagoViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Pago.objects.select_related('prestamo__cliente', 'usuario').prefetch_related(
@@ -360,6 +390,14 @@ class PagoViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         prestamo_id = self.request.query_params.get('prestamo', None)
+        fecha_pago = self.request.query_params.get('fecha', None)
+        usuario_id = self.request.query_params.get('usuario', None)
+        
         if prestamo_id:
             queryset = queryset.filter(prestamo_id=prestamo_id)
+        if fecha_pago:
+            queryset = queryset.filter(fecha_pago=fecha_pago)
+        if usuario_id:
+            queryset = queryset.filter(usuario_id=usuario_id)
+            
         return queryset.order_by('-creado_en')

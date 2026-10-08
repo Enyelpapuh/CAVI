@@ -1,0 +1,156 @@
+{% comment %}
+Pagaré legal CAVI (TK23).
+
+Requisitos: Ley 176 (prohibición del anatocismo: el interés se calcula sobre el
+saldo insoluto), Código de Comercio de Nicaragua (arts. 272 y ss.: pagaré como
+título valor) y Art. 3180 del Código Civil (prelación mora → interés → capital).
+
+El CSS se declara en la misma plantilla para que el documento sea autocontenido
+y ambos motores (WeasyPrint y xhtml2pdf) lo rendericen sin hojas externas.
+{% endcomment %}<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pagaré {{ prestamo.id }}</title>
+<style>
+@page { size: letter; margin: 1.6cm 1.5cm 2.2cm 1.5cm; }
+body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 10pt; color: #101828; line-height: 1.45; }
+h1 { font-size: 15pt; text-align: center; margin: 0 0 2mm 0; letter-spacing: 2px; }
+.sub { text-align: center; font-size: 8.5pt; color: #475467; margin: 0 0 6mm 0; }
+table { width: 100%; border-collapse: collapse; }
+.datos { border: none; margin-bottom: 5mm; }
+.datos td { border: none; border-bottom: 1px solid #d0d5dd; padding: 2.2mm 1mm; vertical-align: bottom; }
+.datos .etiqueta { width: 30mm; font-size: 7.5pt; color: #475467; text-transform: uppercase; border-bottom: none; }
+.datos .valor { font-weight: bold; }
+.clausula { text-align: justify; margin: 4mm 0; }
+.ley { font-size: 7.5pt; color: #475467; text-align: justify; border-top: 1px solid #d0d5dd; padding-top: 2.5mm; margin-top: 4mm; }
+.tabla-cuotas { margin-top: 4mm; font-size: 8pt; }
+.tabla-cuotas th { background: #f2f4f7; border: 1px solid #d0d5dd; padding: 1.6mm; text-align: left; text-transform: uppercase; font-size: 7pt; }
+.tabla-cuotas td { border: 1px solid #d0d5dd; padding: 1.4mm; }
+.num { text-align: right; }
+.firmas { margin-top: 14mm; width: 100%; border: none; }
+.firmas td { border: none; width: 50%; text-align: center; vertical-align: bottom; }
+.linea-firma { border-bottom: 1px solid #101828; height: 14mm; }
+.pie { margin-top: 8mm; font-size: 7pt; color: #667085; text-align: center; border-top: 1px solid #d0d5dd; padding-top: 2mm; }
+</style>
+</head>
+<body>
+
+<h1>PAGARÉ</h1>
+<p class="sub">Título valor.emitido por CAVI &middot; Registro N.º {{ numero_documento }}</p>
+
+<table class="datos">
+  <tr>
+    <td class="etiqueta">Lugar y fecha</td>
+    <td class="valor">{{ lugar }}, {{ fecha_emision }}</td>
+    <td class="etiqueta">Monto del pagaré</td>
+    <td class="valor">{{ monto_letras }} ({{ monto_total_texto }})</td>
+  </tr>
+  <tr>
+    <td class="etiqueta">Deudor</td>
+    <td class="valor">{{ cliente.nombres }} {{ cliente.apellidos }}</td>
+    <td class="etiqueta">Cédula</td>
+    <td class="valor">{{ cliente.cedula }}</td>
+  </tr>
+  <tr>
+    <td class="etiqueta">Domicilio</td>
+    <td class="valor">{{ cliente.direccion }}</td>
+    <td class="etiqueta">Teléfono</td>
+    <td class="valor">{{ cliente.telefono }}</td>
+  </tr>
+  <tr>
+    <td class="etiqueta">Plazo</td>
+    <td class="valor">{{ plazo_texto }}</td>
+    <td class="etiqueta">Periodicidad</td>
+    <td class="valor">{{ periodicidad_texto }}</td>
+  </tr>
+  <tr>
+    <td class="etiqueta">Tasa de interés</td>
+    <td class="valor">{{ tasa_interes_texto }} mensual</td>
+    <td class="etiqueta">Cuota</td>
+    <td class="valor">{{ cuota_texto }}</td>
+  </tr>
+  <tr>
+    <td class="etiqueta">Fecha desembolso</td>
+    <td class="valor">{{ prestamo.fecha_desembolso }}</td>
+    <td class="etiqueta">Primer corte</td>
+    <td class="valor">{{ prestamo.fecha_primer_corte }}</td>
+  </tr>
+</table>
+
+<p class="clausula">
+  Por este pagaré me obligo a pagar a la ordem de <strong>CAVI</strong>, en la ciudad de Managua,
+  República de Nicaragua, la suma de <strong>{{ monto_letras }}</strong>
+  ({{ monto_total_texto }}), correspondiente al capital entregado en efectivo por esa institución
+  en calidad de préstamo, con {{ plazo_texto }} de plazo y amortización en {{ periodicidad_texto|capfirst }} cuotas
+  de {{ cuota_texto }} cada una, que incluyen intereses sobre el saldo insoluto.
+</p>
+
+<p class="clausula">
+  El deudor se obliga además a pagar un recargo por mora de <strong>{{ tasa_mora_texto }} mensual</strong>
+  sobre el capital insoluto por cada día que exceda los {{ dias_gracia }} días de gracia,
+  más los intereses corridos no pagados. Los pagos se imputarán en el siguiente orden:
+  <strong>mora, interés corriente y, por último, capital</strong>.
+</p>
+
+<p class="clausula">
+  El pago de cualquiera de las cuotas obliga al deudor a cancelar el total de la deuda
+  (&ldquo;cláusula de CROSS&rdquo;). El deudor autoriza que en caso de mora se informe su nombre,
+  cédula, domicilio y saldo adeudado a centrales de riesgo para cobro judicial y Banco Central
+  de Nicaragua.
+</p>
+
+<p class="ley">
+  <strong>Fundamento legal.</strong> Ley N.º 176, Ley de Anatocismo: los intereses se calculan
+  únicamente sobre el saldo principal insoluto, prohibiendo la capitalización de intereses
+  vencidos. Código de Comercio de Nicaragua: el pagaré es título valor exigible por su propia
+  fuerza legal. Art. 3180 del Código Civil: en caso de mora, los pagos se aplican primero a las
+  costas, luego al interés y por último al capital.
+</p>
+
+<table class="tabla-cuotas">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Vencimiento</th>
+      <th class="num">Cuota</th>
+      <th class="num">Interés</th>
+      <th class="num">Capital</th>
+      <th class="num">Saldo insoluto</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for fila in proyeccion.periodos %}
+    <tr>
+      <td class="num">{{ fila.periodo }}</td>
+      <td>{{ fila.fecha_vencimiento|date:"d/m/Y" }}</td>
+      <td class="num">{{ fila.cuota }}</td>
+      <td class="num">{{ fila.interes }}</td>
+      <td class="num">{{ fila.capital }}</td>
+      <td class="num">{{ fila.saldo_insoluto }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<table class="firmas">
+  <tr>
+    <td>
+      <div class="linea-firma"></div>
+      <p><strong>{{ cliente.nombres }} {{ cliente.apellidos }}</strong><br>{{ cliente.cedula }}<br>Deudor</p>
+    </td>
+    <td></td>
+    <td>
+      <div class="linea-firma"></div>
+      <p><strong>CAVI</strong><br>{{ usados_por }}<br>Aceptación</p>
+    </td>
+  </tr>
+</table>
+
+<p class="pie">
+  Documento generado el {{ fecha_generacion }} &middot; PDF {{ variante_pdf }}
+  &middot; Cuota fija sobre saldo insoluto, sin anatocismo (Ley N.º 176).
+</p>
+
+</body>
+</html>
