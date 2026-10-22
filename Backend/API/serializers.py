@@ -3,10 +3,11 @@ from django.db.models import Sum
 from .models import (
     Usuario, Cliente, RolUsuario, Fondo, MovimientoFondo, Prestamo,
     PrestamoFondoDetalle, Pago, PagoFondoDetalle, GananciaAdministracion,
+    ConfiguracionSistema,
 )
 from .services.pagos import totales_insolutos, interes_minimo_vencido
 from .services.amortizacion import validar_tasa
-from .services.estados import DIAS_GRACIA, dias_atraso, estado_efectivo
+from .services.estados import DIAS_GRACIA, get_dias_gracia, dias_atraso, estado_efectivo
 from .services.mora import detalle_mora
 from django.utils import timezone
 from decimal import Decimal
@@ -157,7 +158,7 @@ class PrestamoSimulacionSerializer(serializers.Serializer):
 
     monto_principal = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal('0.01'))
     tasa_interes = serializers.DecimalField(max_digits=5, decimal_places=4)
-    plazo_meses = serializers.IntegerField(min_value=1, max_value=120)
+    plazo_meses = serializers.IntegerField(min_value=0, max_value=120)
     periodicidad = serializers.ChoiceField(choices=Prestamo.Periodicidad.choices)
     fecha_primer_corte = serializers.DateField(required=False, default=timezone.localdate)
     cliente = serializers.PrimaryKeyRelatedField(
@@ -168,7 +169,7 @@ class PrestamoSimulacionSerializer(serializers.Serializer):
         return validar_tasa(value)
 
     def validate(self, attrs):
-        if attrs['plazo_meses'] * (1 if attrs['periodicidad'] == 'MENSUAL' else 2) > 360:
+        if attrs['plazo_meses'] > 0 and attrs['plazo_meses'] * (1 if attrs['periodicidad'] == 'MENSUAL' else 2) > 360:
             raise serializers.ValidationError({
                 'plazo_meses': 'El plazo supera el máximo de 360 cortes permitidos.'
             })
@@ -234,7 +235,7 @@ class PrestamoSerializer(serializers.ModelSerializer):
         return dias_atraso(obj)
 
     def get_dias_gracia(self, obj):
-        return DIAS_GRACIA
+        return get_dias_gracia()
 
     def get_estado_efectivo(self, obj):
         return estado_efectivo(obj)
@@ -286,6 +287,14 @@ class PrestamoCreateSerializer(serializers.ModelSerializer):
         validar_tasa(attrs['tasa_interes'])
         if attrs.get('tasa_mora') is not None:
             validar_tasa(attrs['tasa_mora'])
+
+        if attrs.get('plazo_meses') == 0:
+            config = ConfiguracionSistema.get_solo()
+            if not config.permitir_plazo_indefinido:
+                raise serializers.ValidationError({
+                    "plazo_meses": "Los préstamos de plazo indefinido están desactivados en la configuración del sistema."
+                })
+
         fondos_detalle = attrs.get('fondos_detalle', [])
         if not fondos_detalle:
             raise serializers.ValidationError({"fondos_detalle": "Debe especificar al menos un fondo aportante."})
@@ -385,3 +394,14 @@ class PagoReciboSerializer(PagoSerializer):
             data.pop('interes_administracion', None)
             data.pop('interes_fondos', None)
         return data
+
+
+class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfiguracionSistema
+        fields = [
+            'id', 'modo_estricto', 'permitir_superar_usura', 'tasa_maxima_legal',
+            'dias_gracia', 'permitir_plazo_indefinido', 'tasa_mora_diaria',
+            'actualizado_en',
+        ]
+        read_only_fields = ['id', 'actualizado_en']

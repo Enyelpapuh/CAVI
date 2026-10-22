@@ -11,10 +11,18 @@ from rest_framework import serializers
 
 
 def validar_tasa(tasa) -> Decimal:
-    """Rechaza tasas que superen el límite legal del BCN (usura)."""
+    """Rechaza tasas que superen el límite legal del BCN (usura) si el sistema no permite superarla."""
     tasa_d = Decimal(str(tasa))
-    tope = Decimal(str(settings.TASA_MAXIMA_LEGAL))
-    if tasa_d > tope:
+    try:
+        from ..models import ConfiguracionSistema
+        config = ConfiguracionSistema.get_solo()
+        permitir_superar = config.permitir_superar_usura
+        tope = Decimal(str(config.tasa_maxima_legal))
+    except Exception:
+        permitir_superar = False
+        tope = Decimal(str(getattr(settings, 'TASA_MAXIMA_LEGAL', 0.0300)))
+
+    if not permitir_superar and tasa_d > tope:
         raise serializers.ValidationError(
             f"La tasa de interés mensual {tasa_d} supera el límite legal de usura del BCN ({tope})."
         )
@@ -35,8 +43,10 @@ def tasa_periodica(tasa_mensual, periodicidad):
 
 
 def _calcular_cuota(monto_principal, i, n):
-    """Cuota fija francesa: C = P * i / (1 - (1 + i)^-n)."""
+    """Cuota fija francesa: C = P * i / (1 - (1 + i)^-n). Si n=0, cuota = P * i."""
     monto = Decimal(str(monto_principal))
+    if n == 0:
+        return (monto * i).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     if i == 0:
         return (monto / n).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     factor = (1 + i) ** n
@@ -59,6 +69,42 @@ def generar_proyeccion(prestamo, fecha_referencia=None):
                saldo_insoluto, total_interes, total_cuotas}
     """
     from datetime import timedelta
+    from django.utils import timezone
+
+    if getattr(prestamo, 'plazo_meses', None) == 0:
+        intervalo = 30 if prestamo.periodicidad == 'MENSUAL' else 15
+        base = fecha_referencia or prestamo.fecha_primer_corte
+        hoy = timezone.localdate() if fecha_referencia is None else fecha_referencia
+        dias_desde_inicio = max(0, (hoy - base).days)
+        cortes_transcurridos = (dias_desde_inicio // intervalo) + 1
+        n = max(12, cortes_transcurridos + 6)
+        i = tasa_periodica(prestamo.tasa_interes, prestamo.periodicidad)
+        saldo = Decimal(str(getattr(prestamo, 'saldo_insoluto', None) or prestamo.monto_principal))
+        cuota = (saldo * i).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        filas = []
+        for periodo in range(1, n + 1):
+            filas.append({
+                'periodo': periodo,
+                'fecha_vencimiento': base + timedelta(days=intervalo * (periodo - 1)),
+                'cuota': cuota,
+                'interes': cuota,
+                'capital': Decimal('0.00'),
+                'saldo_insoluto': saldo,
+            })
+
+        return {
+            'prestamo': prestamo.id,
+            'cliente': prestamo.cliente_id,
+            'monto_principal': prestamo.monto_principal,
+            'tasa_periodica': i,
+            'periodicidad': prestamo.periodicidad,
+            'plazo_meses': 0,
+            'total_periodos': n,
+            'total_interes': sum(f['interes'] for f in filas),
+            'total_cuotas': sum(f['cuota'] for f in filas),
+            'periodos': filas,
+        }
 
     n = _periodos(prestamo.periodicidad, prestamo.plazo_meses)
     i = tasa_periodica(prestamo.tasa_interes, prestamo.periodicidad)

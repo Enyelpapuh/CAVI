@@ -9,7 +9,8 @@ from django.db.models import Sum, F
 from django.http import HttpResponse
 from decimal import Decimal
 from .models import (
-    Usuario, Cliente, Fondo, MovimientoFondo, Prestamo, PrestamoFondoDetalle, Pago
+    Usuario, Cliente, Fondo, MovimientoFondo, Prestamo, PrestamoFondoDetalle, Pago,
+    ConfiguracionSistema,
 )
 from .serializers import (
     UsuarioSerializer, UsuarioLoginSerializer, ClienteSerializer,
@@ -18,6 +19,7 @@ from .serializers import (
     PrestamoSerializer, PrestamoCreateSerializer, PrestamoFondoDetalleSerializer,
     PagoImputacionSerializer, PagoSerializer, PagoReciboSerializer,
     PagoPreviewSerializer, PrestamoSimulacionSerializer,
+    ConfiguracionSistemaSerializer,
 )
 from .permissions import EsAdministrador
 from .services.amortizacion import generar_proyeccion, validar_tasa
@@ -184,6 +186,110 @@ class FondoViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = MovimientoFondoSerializer(movimientos, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def informe_financiero(self, request):
+        """Informe mensual de rendimientos, intereses ganados y abonos a capital por bolsa."""
+        from django.db.models import Sum, Count
+        from decimal import Decimal
+        from django.utils import timezone
+
+        hoy = timezone.localdate()
+        mes = int(request.query_params.get('mes', hoy.month))
+        anio = int(request.query_params.get('anio', hoy.year))
+        fondo_id = request.query_params.get('fondo', None)
+
+        pagos_mes = Pago.objects.filter(fecha_pago__month=mes, fecha_pago__year=anio)
+        detalles_mes = PagoFondoDetalle.objects.filter(pago__fecha_pago__month=mes, pago__fecha_pago__year=anio)
+
+        if fondo_id:
+            detalles_mes = detalles_mes.filter(fondo_id=fondo_id)
+
+        totales_pagos = pagos_mes.aggregate(
+            total_recaudado=Sum('monto_total'),
+            total_capital=Sum('aplicacion_capital'),
+            total_interes=Sum('aplicacion_interes'),
+            total_mora=Sum('aplicacion_mora'),
+            interes_fondos=Sum('interes_fondos'),
+            interes_admin=Sum('interes_administracion'),
+            cantidad=Count('id')
+        )
+
+        movs_desembolso = MovimientoFondo.objects.filter(
+            tipo=MovimientoFondo.TipoMovimiento.DESEMBOLSO,
+            creado_en__month=mes,
+            creado_en__year=anio
+        )
+        if fondo_id:
+            movs_desembolso = movs_desembolso.filter(fondo_id=fondo_id)
+
+        total_desembolsado = movs_desembolso.aggregate(total=Sum('monto'))['total'] or Decimal('0.00')
+
+        fondos = Fondo.objects.filter(activo=True)
+        if fondo_id:
+            fondos = fondos.filter(id=fondo_id)
+
+        desglose_fondos = []
+        for f in fondos:
+            dets = detalles_mes.filter(fondo=f).aggregate(
+                capital_reintegrado=Sum('capital_reintegrado'),
+                ganancia_interes=Sum('ganancia'),
+                cantidad_abonos=Count('id')
+            )
+            desemb_f = movs_desembolso.filter(fondo=f).aggregate(total=Sum('monto'))['total'] or Decimal('0.00')
+            cap_ret = dets['capital_reintegrado'] or Decimal('0.00')
+            gan_int = dets['ganancia_interes'] or Decimal('0.00')
+            total_acreditado = cap_ret + gan_int
+            flujo_neto = total_acreditado - desemb_f
+
+            desglose_fondos.append({
+                'fondo_id': f.id,
+                'nombre': f.nombre,
+                'familiar': f.familiar,
+                'saldo_actual': str(f.saldo_disponible),
+                'capital_reintegrado': str(cap_ret),
+                'ganancia_interes': str(gan_int),
+                'total_acreditado': str(total_acreditado),
+                'desembolsos_mes': str(desemb_f),
+                'flujo_neto': str(flujo_neto),
+                'cantidad_abonos': dets['cantidad_abonos'] or 0,
+            })
+
+        pagos_lista = []
+        for d in detalles_mes.select_related('pago__prestamo__cliente', 'fondo').order_by('-pago__fecha_pago')[:100]:
+            pagos_lista.append({
+                'pago_id': d.pago.id,
+                'codigo_comprobante': d.pago.codigo_comprobante,
+                'fecha_pago': str(d.pago.fecha_pago),
+                'cliente': str(d.pago.prestamo.cliente),
+                'prestamo_id': d.pago.prestamo_id,
+                'fondo_id': d.fondo_id,
+                'fondo_nombre': d.fondo.nombre,
+                'porcentaje_pi': str(d.porcentaje_pi),
+                'capital_reintegrado': str(d.capital_reintegrado),
+                'ganancia_interes': str(d.ganancia),
+                'metodo_pago': d.pago.get_metodo_pago_display(),
+                'referencia_bancaria': d.pago.referencia_bancaria,
+            })
+
+        recaudado = totales_pagos['total_recaudado'] or Decimal('0.00')
+        return Response({
+            'mes': mes,
+            'anio': anio,
+            'resumen': {
+                'total_recaudado': str(recaudado),
+                'capital_retornado': str(totales_pagos['total_capital'] or Decimal('0.00')),
+                'interes_total': str(totales_pagos['total_interes'] or Decimal('0.00')),
+                'interes_fondos': str(totales_pagos['interes_fondos'] or Decimal('0.00')),
+                'interes_admin': str(totales_pagos['interes_admin'] or Decimal('0.00')),
+                'mora_total': str(totales_pagos['total_mora'] or Decimal('0.00')),
+                'desembolsos_mes': str(total_desembolsado),
+                'flujo_neto': str(recaudado - total_desembolsado),
+                'cantidad_pagos': totales_pagos['cantidad'] or 0,
+            },
+            'desglose_fondos': desglose_fondos,
+            'transacciones': pagos_lista,
+        })
 
 
 class DashboardViewSet(viewsets.ViewSet):
@@ -390,14 +496,45 @@ class PagoViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         prestamo_id = self.request.query_params.get('prestamo', None)
+        cliente_id = self.request.query_params.get('cliente', None)
         fecha_pago = self.request.query_params.get('fecha', None)
         usuario_id = self.request.query_params.get('usuario', None)
         
         if prestamo_id:
             queryset = queryset.filter(prestamo_id=prestamo_id)
+        if cliente_id:
+            queryset = queryset.filter(prestamo__cliente_id=cliente_id)
         if fecha_pago:
             queryset = queryset.filter(fecha_pago=fecha_pago)
         if usuario_id:
             queryset = queryset.filter(usuario_id=usuario_id)
             
         return queryset.order_by('-creado_en')
+
+
+class ConfiguracionViewSet(viewsets.ViewSet):
+    """Gestión de políticas y parámetros del sistema (solo ADMINISTRADOR)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        config = ConfiguracionSistema.get_solo()
+        return Response(ConfiguracionSistemaSerializer(config).data)
+
+    def create(self, request):
+        return self._guardar(request)
+
+    def partial_update(self, request, pk=None):
+        return self._guardar(request)
+
+    def update(self, request, pk=None):
+        return self._guardar(request)
+
+    def _guardar(self, request):
+        if not EsAdministrador().has_permission(request, self):
+            return Response({'detail': EsAdministrador.message}, status=status.HTTP_403_FORBIDDEN)
+        config = ConfiguracionSistema.get_solo()
+        serializer = ConfiguracionSistemaSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

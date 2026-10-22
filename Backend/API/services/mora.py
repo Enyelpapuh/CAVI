@@ -24,7 +24,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.db.models import Sum
 
 from ..models import Prestamo
-from .estados import DIAS_GRACIA, dias_atraso
+from .estados import DIAS_GRACIA, dias_atraso, get_dias_gracia
 
 # Base de cálculo de la tasa diaria sobre la tasa mensual pactada.
 DIAS_MES = Decimal('30')
@@ -54,7 +54,7 @@ def tasa_mora_diaria(prestamo) -> Decimal:
 def dias_mora_facturables(prestamo, hoy=None, proyeccion=None) -> int:
     """Días vencidos que ya superan la gracia (0 si está al día o cancelado)."""
     atraso = dias_atraso(prestamo, hoy=hoy, proyeccion=proyeccion)
-    return max(0, atraso - DIAS_GRACIA)
+    return max(0, atraso - get_dias_gracia())
 
 
 def mora_generada_no_persistida(prestamo, hoy=None, proyeccion=None) -> Decimal:
@@ -65,7 +65,7 @@ def mora_generada_no_persistida(prestamo, hoy=None, proyeccion=None) -> Decimal:
     idempotente y no depende de la fecha del último cálculo.
     """
     dias_objetivo = dias_mora_facturables(prestamo, hoy=hoy, proyeccion=proyeccion)
-    dias_nuevos = dias_objetivo - int(prestamo.dias_mora or 0)
+    dias_nuevos = max(0, dias_objetivo - int(prestamo.dias_mora or 0))
     if dias_nuevos <= 0:
         return Decimal('0.00')
 
@@ -97,12 +97,13 @@ def detalle_mora(prestamo, hoy=None, proyeccion=None, persistir=False):
     """
     from django.utils import timezone
 
+    dias_gracia_actual = get_dias_gracia()
     if prestamo.estado == Prestamo.Estado.CANCELADO:
         return {
             'tasa_mora_mensual': tasa_mora_mensual(prestamo),
             'tasa_mora_diaria': tasa_mora_diaria(prestamo),
             'dias_mora': 0,
-            'dias_gracia': DIAS_GRACIA,
+            'dias_gracia': dias_gracia_actual,
             'mora_acumulada': Decimal('0.00'),
             'mora_no_persistida': Decimal('0.00'),
             'mora_aplicada': mora_aplicada(prestamo),
@@ -127,7 +128,7 @@ def detalle_mora(prestamo, hoy=None, proyeccion=None, persistir=False):
         'tasa_mora_diaria': tasa_mora_diaria(prestamo),
         'dias_mora': dias_objetivo,
         'dias_nuevos': dias_nuevos,
-        'dias_gracia': DIAS_GRACIA,
+        'dias_gracia': dias_gracia_actual,
         'mora_acumulada': acumulada,
         'mora_no_persistida': no_persistida,
         'mora_aplicada': aplicada,
@@ -153,7 +154,7 @@ def estado_por_mora(prestamo, hoy=None, proyeccion=None) -> str:
     atraso = dias_atraso(prestamo, hoy=hoy, proyeccion=proyeccion)
     if atraso <= 0:
         return Prestamo.Estado.VIGENTE
-    if atraso <= DIAS_GRACIA:
+    if atraso <= get_dias_gracia():
         return Prestamo.Estado.EN_GRACIA
     return Prestamo.Estado.EN_MORA
 

@@ -14,8 +14,17 @@ from django.db.models import Sum
 
 from .amortizacion import generar_proyeccion
 
-# Días de gracia antes de que un atraso sea exigible. Criterio CAVI / Ley 1146.
+# Días de gracia por defecto antes de que un atraso sea exigible. Criterio CAVI / Ley 1146.
 DIAS_GRACIA = 4
+
+
+def get_dias_gracia() -> int:
+    """Obtiene los días de gracia configurados en el sistema o el valor por defecto."""
+    try:
+        from ..models import ConfiguracionSistema
+        return ConfiguracionSistema.get_solo().dias_gracia
+    except Exception:
+        return DIAS_GRACIA
 
 
 def _cantidad(valor) -> Decimal:
@@ -86,4 +95,4 @@ def estado_efectivo(prestamo, hoy=None, proyeccion=None):
     atraso = dias_atraso(prestamo, hoy=hoy, proyeccion=proyeccion)
     if atraso <= 0:
         return 'AL_DIA'
-    return 'EN_GRACIA' if atraso <= DIAS_GRACIA else 'EN_MORA'
+    return 'EN_GRACIA' if atraso <= get_dias_gracia() else 'EN_MORA'

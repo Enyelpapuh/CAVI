@@ -384,3 +384,58 @@ class GananciaAdministracion(models.Model):
 
     def __str__(self):
         return f"Admin {self.monto} - {self.pago.codigo_comprobante or self.pago_id}"
+
+
+class ConfiguracionSistema(models.Model):
+    """Parámetros de políticas del sistema y modo de digitalización de cartera."""
+
+    id = models.BigAutoField(primary_key=True)
+    modo_estricto = models.BooleanField(
+        _('modo estricto'),
+        default=False,
+        help_text=_('Si es False, opera en modo de digitalización flexible permitiendo excepciones históricas.')
+    )
+    permitir_superar_usura = models.BooleanField(
+        _('permitir superar usura'),
+        default=False,
+        help_text=_('Permite asentar créditos históricos con tasas mayores al límite del BCN (ej: 10% mensual).')
+    )
+    tasa_maxima_legal = models.DecimalField(
+        _('tasa máxima legal referencial'),
+        max_digits=5,
+        decimal_places=4,
+        default=Decimal('0.0300'),
+        help_text=_('Tope referencial del BCN (0.0300 = 3.00% mensual).')
+    )
+    dias_gracia = models.PositiveIntegerField(
+        _('días de gracia'),
+        default=4,
+        help_text=_('Días de tolerancia tras el corte antes de aplicar mora.')
+    )
+    permitir_plazo_indefinido = models.BooleanField(
+        _('permitir plazo indefinido'),
+        default=True,
+        help_text=_('Permite créditos abiertos donde la cuota mensual es solo el interés sobre el saldo restante.')
+    )
+    tasa_mora_diaria = models.DecimalField(
+        _('tasa mora diaria'),
+        max_digits=5,
+        decimal_places=4,
+        default=Decimal('0.0050'),
+        help_text=_('Tasa diaria de recargo por mora (0.0050 = 0.50% diario).')
+    )
+    actualizado_en = models.DateTimeField(_('actualizado en'), auto_now=True)
+
+    class Meta:
+        verbose_name = _('configuración del sistema')
+        verbose_name_plural = _('configuración del sistema')
+        db_table = 'configuracion_sistema'
+
+    def __str__(self):
+        return f"Configuración CAVI ({'Estricto' if self.modo_estricto else 'Flexible'})"
+
+    @classmethod
+    def get_solo(cls):
+        """Patrón singleton para obtener o inicializar la configuración global."""
+        obj, _ = cls.objects.get_or_create(id=1)
+        return obj
