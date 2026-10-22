@@ -186,21 +186,22 @@ describe('CobrosPage', () => {
     expect(tarjetaSana?.textContent).not.toContain('Mora C$');
   });
 
-  it('ofrece imprimir el pagaré en cada crédito de la agenda', async () => {
+  it('muestra la ficha de pendientes del cliente al abrir el modal y no incluye boton de pagare en agenda', async () => {
     render(<CobrosPage />);
 
     await waitFor(() => screen.getByText('Juan Perez'));
-    expect(screen.getByTestId('pagare-1')).toBeInTheDocument();
-    expect(screen.getByTestId('pagare-2')).toBeInTheDocument();
+    // El botón de pagaré ya no está presente en la agenda de cobranza
+    expect(screen.queryByTestId('pagare-1')).toBeNull();
+    expect(screen.queryByTestId('pagare-2')).toBeNull();
 
-    (prestamoService.pagarPagare as any).mockResolvedValue({
-      blob: new Blob(['%PDF']),
-      nombre: 'Pagare-001-111222-3.pdf',
-      variante: 'PDF/A-2b',
-    });
-    fireEvent.click(screen.getByTestId('pagare-1'));
+    // Abrir modal de abono
+    fireEvent.click(screen.getByTestId('cobrar-1'));
 
-    await waitFor(() => expect(prestamoService.pagarPagare).toHaveBeenCalledWith(1));
+    // Verifica que aparezca la ficha de pendientes del prestatario
+    expect(screen.getByText('Cuota del Ciclo')).toBeInTheDocument();
+    expect(screen.getByText('Deuda Total')).toBeInTheDocument();
+    expect(screen.getByText('Período 2 de 6')).toBeInTheDocument();
+    expect(screen.getByText('Mora Exigible')).toBeInTheDocument();
   });
 
   it('avisa la restriccion de privacidad al rol cobranza', async () => {
@@ -209,14 +210,19 @@ describe('CobrosPage', () => {
     expect(screen.getByText(/restringida por privacidad/i)).toBeInTheDocument();
   });
 
-  it('filtra la agenda por estado', async () => {
+  it('filtra la agenda entre créditos en fecha y pasados', async () => {
     render(<CobrosPage />);
     await waitFor(() => screen.getByText('Juan Perez'));
 
-    fireEvent.click(screen.getByRole('button', { name: 'En Mora' }));
-
+    // Filtrar por Pasados
+    fireEvent.click(screen.getByRole('button', { name: /Pasados/i }));
     await waitFor(() => expect(screen.queryByText('Juan Perez')).toBeNull());
     expect(screen.getByText('Maria Lopez')).toBeInTheDocument();
+
+    // Filtrar por En Fecha
+    fireEvent.click(screen.getByRole('button', { name: /En Fecha/i }));
+    await waitFor(() => expect(screen.getByText('Juan Perez')).toBeInTheDocument());
+    expect(screen.queryByText('Maria Lopez')).toBeNull();
   });
 
   it('consulta el preview de prelacion al escribir el monto', async () => {
@@ -307,16 +313,17 @@ describe('CobrosPage', () => {
     await waitFor(() => expect((screen.getByRole('button', { name: 'Confirmar Cobro' }) as HTMLButtonElement).disabled).toBe(false));
   });
 
-  it('muestra mi caja con el desglose por metodo de pago', async () => {
+  it('mantiene la agenda como vista única y muestra los indicadores de en fecha y pasados', async () => {
     render(<CobrosPage />);
     await waitFor(() => screen.getByText('Juan Perez'));
 
-    fireEvent.click(screen.getByRole('button', { name: /Mi Caja/ }));
+    // Verifica que no existan pestañas de cambio de vista
+    expect(screen.queryByRole('button', { name: /Mi Caja/i })).toBeNull();
 
-    await waitFor(() => {
-      expect(screen.getByText('Recaudos de hoy')).toBeInTheDocument();
-    });
-    expect(screen.getByText(/recibos emitidos por Cobrador Ruta 1/)).toBeInTheDocument();
-    expect(screen.getByText('Efectivo')).toBeInTheDocument();
+    // Verifica los indicadores principales
+    expect(screen.getByText('Cobros Hoy')).toBeInTheDocument();
+    expect(screen.getByText('Por Cobrar')).toBeInTheDocument();
+    expect(screen.getByText('En Fecha')).toBeInTheDocument();
+    expect(screen.getByText('Pasados')).toBeInTheDocument();
   });
 });

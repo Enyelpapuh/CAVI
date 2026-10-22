@@ -1,4 +1,4 @@
-import { useId } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import type { ComponentChildren, JSX } from 'preact';
 
 const CONTROL =
@@ -14,7 +14,7 @@ interface CampoProps {
 }
 
 export function Campo({ label, children, error, hint, required = false, class: className = '' }: CampoProps) {
-  const id = useId();
+  const [id] = useState(() => `field-${Math.random().toString(36).substring(2, 9)}`);
   const ayudaId = error || hint ? `${id}-ayuda` : undefined;
 
   return (

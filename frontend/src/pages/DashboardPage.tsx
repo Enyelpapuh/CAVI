@@ -5,10 +5,8 @@ import { Card, KpiTile, Button, Icon, Spinner, EmptyState } from '../components/
 import { dashboardService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from '../lib/router';
-import { fmtMonto, fmtCantidad, fmtPorcentaje, fmtFecha } from '../lib/format';
+import { fmtMonto, fmtCantidad, fmtFecha } from '../lib/format';
 import type { Dashboard } from '../types';
-
-
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -20,10 +18,6 @@ export function DashboardPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!esAdmin) {
-      setLoading(false);
-      return;
-    }
     let vigente = true;
     setLoading(true);
     dashboardService
@@ -35,7 +29,7 @@ export function DashboardPage() {
         }
       })
       .catch((err: any) => {
-        if (vigente) setError(err?.response?.data?.detail || 'No se pudo cargar el panel de control');
+        if (vigente) setError(err?.response?.data?.detail || 'No se pudo cargar el centro operativo');
       })
       .finally(() => {
         if (vigente) setLoading(false);
@@ -43,55 +37,50 @@ export function DashboardPage() {
     return () => {
       vigente = false;
     };
-  }, [esAdmin]);
+  }, []);
 
   const ACCIONES_ADMIN = [
-    { label: 'Registrar Cliente', icon: 'person_add', color: 'bg-indigo-600', path: '/clientes' },
-    { label: 'Nuevo Préstamo', icon: 'post_add', color: 'bg-blue-600', path: '/prestamos/nuevo' },
     { label: 'Registrar Pago', icon: 'payments', color: 'bg-emerald-600', path: '/cobros' },
-    { label: 'Arqueo Diario', icon: 'point_of_sale', color: 'bg-amber-500', path: '/reportes/arqueo' },
+    { label: 'Nuevo Préstamo', icon: 'post_add', color: 'bg-indigo-600', path: '/prestamos/nuevo' },
+    { label: 'Alta de Cliente', icon: 'person_add', color: 'bg-blue-600', path: '/clientes' },
+    { label: 'Arqueo de Caja', icon: 'point_of_sale', color: 'bg-amber-500', path: '/reportes/arqueo' },
   ];
 
   const ACCIONES_COBRANZA = [
-    { label: 'Mi Ruta de Cobro', icon: 'map', color: 'bg-blue-600', path: '/cobros' },
-    { label: 'Registrar Pago', icon: 'payments', color: 'bg-emerald-600', path: '/cobros' },
-    { label: 'Mi Arqueo', icon: 'point_of_sale', color: 'bg-amber-500', path: '/reportes/arqueo' },
+    { label: 'Cobrar en Ruta', icon: 'payments', color: 'bg-emerald-600', path: '/cobros' },
+    { label: 'Mi Arqueo del Día', icon: 'point_of_sale', color: 'bg-amber-500', path: '/reportes/arqueo' },
   ];
 
   const acciones = esAdmin ? ACCIONES_ADMIN : ACCIONES_COBRANZA;
 
   return (
-    <Layout titulo="Panel de Control">
+    <Layout titulo="Inicio">
       <PageHeader
         titulo={`Hola, ${user?.nombre_completo.split(' ')[0] || 'Usuario'}`}
-        descripcion={
-          esAdmin
-            ? datos
-              ? `Resumen financiero al ${fmtFecha(datos.fecha)}`
-              : 'Resumen financiero y acciones rápidas'
-            : 'Acciones rápidas para tu gestión de hoy'
-        }
+        descripcion={`Centro Operativo del Día · ${datos ? fmtFecha(datos.fecha) : 'Gestión de cobros y atención diaria'}`}
         actions={
-          esAdmin && (
-            <Button variant="secondary" icon="sync" onClick={() => location.reload()} loading={loading}>
-              Actualizar
-            </Button>
-          )
+          <Button variant="secondary" icon="sync" onClick={() => location.reload()} loading={loading}>
+            Actualizar
+          </Button>
         }
       />
 
-      {/* Acciones Rápidas */}
-      <div class="mb-8">
-        <h2 class="mb-3 text-label-sm uppercase tracking-wider text-slate-500">Acciones Rápidas</h2>
+      {/* Acciones Rápidas Operativas */}
+      <div class="mb-6">
+        <h2 class="mb-3 text-label-sm font-semibold uppercase tracking-wider text-slate-500">
+          Acciones Rápidas Operativas
+        </h2>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {acciones.map((accion) => (
             <button
               key={accion.label}
               onClick={() => navigate(accion.path)}
-              class="group flex flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-transparent hover:shadow-md active:scale-95"
+              class="group flex flex-col items-center justify-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:shadow-md active:scale-95"
             >
-              <div class={`flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-inner transition-transform group-hover:scale-110 ${accion.color}`}>
-                <Icon name={accion.icon} size={24} />
+              <div
+                class={`flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-inner transition-transform group-hover:scale-105 ${accion.color}`}
+              >
+                <Icon name={accion.icon} size={22} />
               </div>
               <span class="text-center text-body-sm font-semibold text-slate-700 group-hover:text-slate-900">
                 {accion.label}
@@ -102,81 +91,86 @@ export function DashboardPage() {
       </div>
 
       {error && (
-        <div class="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-body-md text-red-700">
-          <Icon name="warning" size={20} />
+        <div class="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-700">
+          <Icon name="warning" size={18} />
           {error}
         </div>
       )}
 
-      {loading && !datos && esAdmin ? (
+      {loading && !datos ? (
         <div class="flex justify-center py-16">
           <Spinner size={40} />
         </div>
-      ) : esAdmin && datos ? (
-        <>
-          <h2 class="mb-3 mt-6 text-label-sm uppercase tracking-wider text-slate-500">Indicadores Principales</h2>
-          <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiTile
-              label="Clientes Activos"
-              value={fmtCantidad(datos?.clientes_activos)}
-              icon="groups"
-              tono="ambar"
-              onClick={() => navigate('/clientes')}
-            />
-            <KpiTile
-              label="Bolsas de Fondo"
-              value={fmtCantidad(datos?.bolsas.cantidad)}
-              icon="savings"
-              tono="indigo"
-              pie={`${fmtMonto(datos?.bolsas.capital_en_calle)} disponible`}
-              onClick={() => navigate('/fondos')}
-            />
-            <KpiTile
-              label="Creditos Vigentes"
-              value={fmtCantidad(datos?.creditos_vigentes.cantidad)}
-              icon="account_balance_wallet"
-              tono="esmeralda"
-              pie={`${fmtMonto(datos?.creditos_vigentes.saldo_total)} en cartera`}
-              onClick={() => navigate('/cobros')}
-            />
-            <KpiTile
-              label="Abonos del Dia"
-              value={fmtMonto(datos?.abonos_del_dia.monto)}
-              icon="payments"
-              tono="neutro"
-              pie={`${fmtCantidad(datos?.abonos_del_dia.cantidad)} recibos hoy`}
-              onClick={() => navigate('/reportes/arqueo')}
-            />
+      ) : datos ? (
+        <div class="space-y-6">
+          {/* Operación del Día: Recaudación y Estado de Cartera Activa */}
+          <div>
+            <h2 class="mb-3 text-label-sm font-semibold uppercase tracking-wider text-slate-500">
+              Operación y Cobros de Hoy
+            </h2>
+            <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <KpiTile
+                label="Recaudación Hoy"
+                value={fmtMonto(datos.abonos_del_dia.monto)}
+                icon="payments"
+                tono="esmeralda"
+                pie={`${fmtCantidad(datos.abonos_del_dia.cantidad)} recibos cobrados`}
+                onClick={() => navigate('/cobros')}
+              />
+              <KpiTile
+                label="En Fecha"
+                value={fmtCantidad(datos.cartera_semaforo.al_dia)}
+                icon="task_alt"
+                tono="indigo"
+                pie="Créditos al día"
+                onClick={() => navigate('/cobros')}
+              />
+              <KpiTile
+                label="En Gracia"
+                value={fmtCantidad(datos.cartera_semaforo.en_gracia)}
+                icon="schedule"
+                tono="ambar"
+                pie="Dentro de los 5 días"
+                onClick={() => navigate('/cobros')}
+              />
+              <KpiTile
+                label="Pasados (Mora)"
+                value={fmtCantidad(datos.cartera_semaforo.en_mora)}
+                icon="warning"
+                tono="rosa"
+                pie={`Mora: ${fmtMonto(datos.cartera_semaforo.mora_total)}`}
+                onClick={() => navigate('/cobros')}
+              />
+            </div>
           </div>
 
-          <div class="mt-6">
-            <Card class="flex flex-col items-center justify-between gap-4 p-6 sm:flex-row">
-              <div class="flex items-center gap-4">
-                <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
-                  <Icon name="credit_score" size={26} />
-                </div>
-                <div>
-                  <h3 class="text-body-md font-bold text-slate-900">Gestión Operativa de Cartera</h3>
-                  <p class="text-body-sm text-slate-500">
-                    Consulta el estado de cada crédito, cuotas vigentes y mora exigible directamente en la terminal de cobros.
-                  </p>
-                </div>
+          {/* Tarjeta de Acceso a la Jornada de Cobro */}
+          <Card class="flex flex-col items-center justify-between gap-4 p-5 sm:flex-row border border-slate-200">
+            <div class="flex items-center gap-4">
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                <Icon name="credit_card" size={26} />
               </div>
-              <Button variant="secondary" iconRight="arrow_forward" onClick={() => navigate('/cobros')}>
-                Ver Cartera Completa
-              </Button>
-            </Card>
-          </div>
-        </>
-      ) : !esAdmin ? (
+              <div>
+                <h3 class="text-body-md font-bold text-slate-900">Terminal de Abonos y Cobranza</h3>
+                <p class="text-body-sm text-slate-500">
+                  Consulte clientes con cuotas en fecha vs. pasados, busque prestatarios y registre pagos en efectivo o transferencia.
+                </p>
+              </div>
+            </div>
+            <Button iconRight="arrow_forward" onClick={() => navigate('/cobros')}>
+              Abrir Cobranza
+            </Button>
+          </Card>
+        </div>
+      ) : (
         <div class="mt-4">
           <EmptyState
             icon="task_alt"
             title="¡Todo listo para hoy!"
-            description="Usa las acciones rápidas arriba para registrar los abonos o ver tu ruta de cobranza."
+            description="Usa las acciones rápidas arriba para registrar los abonos o consultar la agenda de cobranza."
           />
         </div>
-      ) : null}
+      )}
     </Layout>
   );
 }

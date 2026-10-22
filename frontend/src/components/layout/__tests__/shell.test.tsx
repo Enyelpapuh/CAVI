@@ -37,7 +37,7 @@ const conToast = (children: any) => <ToastProvider>{children}</ToastProvider>;
 describe('Sidebar', () => {
   it('muestra las secciones operativas y el perfil del usuario', () => {
     render(conToast(<Sidebar />));
-    expect(screen.getByText('Panel de Control')).toBeInTheDocument();
+    expect(screen.getByText('Inicio')).toBeInTheDocument();
     expect(screen.getByText('Clientes')).toBeInTheDocument();
     expect(screen.getByText('Lic. Fernando Martinez')).toBeInTheDocument();
     expect(screen.getByText('Cerrar sesión')).toBeInTheDocument();
@@ -46,7 +46,7 @@ describe('Sidebar', () => {
   it('oculta las secciones exclusivas del administrador al rol COBRANZA', () => {
     rol = 'COBRANZA';
     render(conToast(<Sidebar />));
-    expect(screen.getByText('Créditos y Abonos')).toBeInTheDocument();
+    expect(screen.getByText('Abonos y Cobranza')).toBeInTheDocument();
     expect(screen.queryByText('Bolsas de Capital')).not.toBeInTheDocument();
     expect(screen.queryByText('Permisos')).not.toBeInTheDocument();
     rol = 'ADMINISTRADOR';
@@ -55,14 +55,14 @@ describe('Sidebar', () => {
   it('muestra los modulos del sistema con sus enlaces correspondientes', () => {
     render(conToast(<Sidebar />));
     expect(screen.getByText('Estados de Cuenta').closest('a')).toHaveAttribute('href', '#/reportes/estados-cuenta');
-    expect(screen.getByText('Créditos y Abonos').closest('a')).toHaveAttribute('href', '#/cobros');
+    expect(screen.getByText('Abonos y Cobranza').closest('a')).toHaveAttribute('href', '#/cobros');
   });
 });
 
 describe('Topbar', () => {
   it('muestra el titulo de la pagina, el estado del servidor y el rol', () => {
-    render(conToast(<Topbar titulo="Créditos y Abonos" onAbrirMenu={vi.fn()} />));
-    expect(screen.getByText('Créditos y Abonos')).toBeInTheDocument();
+    render(conToast(<Topbar titulo="Abonos y Cobranza" onAbrirMenu={vi.fn()} />));
+    expect(screen.getByText('Abonos y Cobranza')).toBeInTheDocument();
     expect(screen.getByText(/Servidor en Línea/)).toBeInTheDocument();
     expect(screen.getByText('Administrador')).toBeInTheDocument();
   });
@@ -77,7 +77,7 @@ describe('Layout', () => {
         </Layout>
       )
     );
-    expect(screen.getAllByText('Créditos y Abonos').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Abonos y Cobranza').length).toBeGreaterThan(0);
     expect(screen.getByText('Contenido')).toBeInTheDocument();
   });
 
@@ -91,7 +91,7 @@ describe('Layout', () => {
     );
     expect(screen.getByText('Contenido')).toBeInTheDocument();
     expect(screen.getByLabelText('Abrir menú de navegación')).toBeInTheDocument();
-    expect(screen.getAllByText('Panel de Control').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Inicio').length).toBeGreaterThan(0);
   });
 
   it('omite sidebar y topbar cuando no hay usuario (pantalla de login)', () => {
@@ -104,7 +104,7 @@ describe('Layout', () => {
       )
     );
     expect(screen.queryByLabelText('Abrir menú de navegación')).not.toBeInTheDocument();
-    expect(screen.queryByText('Panel de Control')).not.toBeInTheDocument();
+    expect(screen.queryByText('Inicio')).not.toBeInTheDocument();
     expect(screen.getByText('Sin sesion')).toBeInTheDocument();
     usuario = { nombre_completo: 'Lic. Fernando Martinez', rol: 'ADMINISTRADOR' };
   });

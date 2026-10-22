@@ -19,26 +19,46 @@ interface KpiTileProps {
   tono?: TonoKpi;
   pie?: ComponentChildren;
   onClick?: () => void;
+  compact?: boolean;
   class?: string;
 }
 
-export function KpiTile({ label, value, icon, tono = 'neutro', pie, onClick, class: className = '' }: KpiTileProps) {
+export function KpiTile({
+  label,
+  value,
+  icon,
+  tono = 'neutro',
+  pie,
+  onClick,
+  compact = false,
+  class: className = '',
+}: KpiTileProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      class={`flex w-full flex-col items-start justify-center rounded-2xl p-6 text-left ring-1 ring-inset transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+      class={`flex w-full flex-col items-start justify-center text-left ring-1 ring-inset transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
         COLORES[tono]
-      } ${onClick ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-default'} ${className}`}
+      } ${compact ? 'rounded-xl p-3.5 sm:p-4' : 'rounded-2xl p-6'} ${
+        onClick ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-default'
+      } ${className}`}
     >
-      <div class="mb-4 flex items-center gap-3">
-        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-black/5">
-          <Icon name={icon} size={22} />
+      <div class={`flex items-center gap-2.5 ${compact ? 'mb-2' : 'mb-4'}`}>
+        <span
+          class={`flex shrink-0 items-center justify-center bg-white shadow-sm ring-1 ring-black/5 ${
+            compact ? 'h-7 w-7 rounded-lg' : 'h-10 w-10 rounded-xl'
+          }`}
+        >
+          <Icon name={icon} size={compact ? 16 : 22} />
         </span>
-        <span class="text-sm font-medium opacity-80">{label}</span>
+        <span class={`font-medium ${compact ? 'text-xs uppercase tracking-wider opacity-90' : 'text-sm opacity-80'}`}>
+          {label}
+        </span>
       </div>
-      <span class="tnum text-3xl font-semibold tracking-tight">{value}</span>
-      {pie && <span class="mt-2 text-xs font-medium opacity-70">{pie}</span>}
+      <span class={`tnum font-bold tracking-tight ${compact ? 'text-xl sm:text-2xl' : 'text-3xl'}`}>{value}</span>
+      {pie && (
+        <span class={`font-medium opacity-70 ${compact ? 'mt-1 text-[11px]' : 'mt-2 text-xs'}`}>{pie}</span>
+      )}
     </button>
   );
 }

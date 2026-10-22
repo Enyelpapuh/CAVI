@@ -34,8 +34,16 @@ const DASHBOARD = {
   clientes_activos: 12,
   bolsas: { cantidad: 3, capital_en_calle: '150000.00' },
   creditos_vigentes: {
-    cantidad: 2,
+    cantidad: 15,
     saldo_total: '100000.00',
+  },
+  cartera_semaforo: {
+    al_dia: 10,
+    en_gracia: 3,
+    en_mora: 2,
+    dias_gracia: 5,
+    saldo_en_mora: '15000.00',
+    mora_total: '750.00',
   },
   abonos_del_dia: { monto: '2000.00', cantidad: 5 },
 };
@@ -45,56 +53,52 @@ beforeEach(() => {
   useAuth.mockReturnValue({ user: { nombre_completo: 'Admin General', rol: 'ADMINISTRADOR' } });
 });
 
-describe('DashboardPage', () => {
-  it('muestra las acciones rapidas de administrador y los indicadores clave', async () => {
+describe('DashboardPage (Centro Operativo del Día)', () => {
+  it('muestra las acciones rápidas operativas y los indicadores de cobros de hoy', async () => {
     (dashboardService.resumen as any).mockResolvedValue(DASHBOARD);
     render(<DashboardPage />);
 
     // Acciones rápidas
-    expect(screen.getByText('Registrar Cliente')).toBeInTheDocument();
-    expect(screen.getByText('Nuevo Préstamo')).toBeInTheDocument();
     expect(screen.getByText('Registrar Pago')).toBeInTheDocument();
-    expect(screen.getByText('Arqueo Diario')).toBeInTheDocument();
+    expect(screen.getByText('Nuevo Préstamo')).toBeInTheDocument();
+    expect(screen.getByText('Alta de Cliente')).toBeInTheDocument();
+    expect(screen.getByText('Arqueo de Caja')).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText('Clientes Activos')).toBeInTheDocument();
+      expect(screen.getByText('Operación y Cobros de Hoy')).toBeInTheDocument();
+      expect(screen.getByText('Recaudación Hoy')).toBeInTheDocument();
+      expect(screen.getByText('En Fecha')).toBeInTheDocument();
+      expect(screen.getByText('En Gracia')).toBeInTheDocument();
+      expect(screen.getByText('Pasados (Mora)')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByText('C$2,000.00')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
-    expect(screen.getByText('C$2,000.00')).toBeInTheDocument();
 
-    // Pie de KPIs
-    expect(screen.getByText('C$150,000.00 disponible')).toBeInTheDocument();
-    expect(screen.getByText('C$100,000.00 en cartera')).toBeInTheDocument();
-    expect(screen.getByText('5 recibos hoy')).toBeInTheDocument();
-
-    // Tarjeta de acceso operativo
-    expect(screen.getByText('Gestión Operativa de Cartera')).toBeInTheDocument();
-    expect(screen.getByText('Ver Cartera Completa')).toBeInTheDocument();
+    // Acceso a terminal de cobranza
+    expect(screen.getByText('Terminal de Abonos y Cobranza')).toBeInTheDocument();
+    expect(screen.getByText('Abrir Cobranza')).toBeInTheDocument();
   });
 
   it('navega al modulo correspondiente al pulsar una accion rapida', async () => {
     (dashboardService.resumen as any).mockResolvedValue(DASHBOARD);
     render(<DashboardPage />);
 
-    fireEvent.click(screen.getByText('Registrar Cliente'));
+    fireEvent.click(screen.getByText('Alta de Cliente'));
     expect(navigateMock).toHaveBeenCalledWith('/clientes');
 
-    fireEvent.click(screen.getByText('Arqueo Diario'));
+    fireEvent.click(screen.getByText('Arqueo de Caja'));
     expect(navigateMock).toHaveBeenCalledWith('/reportes/arqueo');
   });
 
   it('muestra acciones de campo y mensaje de bienvenida para el rol cobranza', async () => {
     useAuth.mockReturnValue({ user: { nombre_completo: 'Cobrador Carlos', rol: 'COBRANZA' } });
+    (dashboardService.resumen as any).mockResolvedValue(DASHBOARD);
     render(<DashboardPage />);
 
-    expect(screen.getByText('Mi Ruta de Cobro')).toBeInTheDocument();
-    expect(screen.getByText('Registrar Pago')).toBeInTheDocument();
-    expect(screen.getByText('Mi Arqueo')).toBeInTheDocument();
-
-    expect(screen.getByText('¡Todo listo para hoy!')).toBeInTheDocument();
-    expect(dashboardService.resumen).not.toHaveBeenCalled();
+    expect(screen.getByText('Cobrar en Ruta')).toBeInTheDocument();
+    expect(screen.getByText('Mi Arqueo del Día')).toBeInTheDocument();
   });
 });

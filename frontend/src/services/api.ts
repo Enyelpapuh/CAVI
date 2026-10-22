@@ -13,6 +13,7 @@ import type {
   Dashboard,
   CajaCobrador,
   AgendaCobrador,
+  ConfiguracionSistema,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -207,6 +208,11 @@ export const fondoService = {
     const response = await api.get(`/fondos/${id}/movimientos/`, { params });
     return response.data;
   },
+
+  informeFinanciero: async (params?: { mes?: number; anio?: number; fondo?: number }) => {
+    const response = await api.get('/fondos/informe_financiero/', { params });
+    return response.data;
+  },
 };
 
 // Prestamo endpoints
@@ -300,7 +306,7 @@ export const prestamoService = {
 
 // Pago endpoints
 export const pagoService = {
-  list: async (params?: { page?: number; prestamo?: number; fecha?: string; usuario?: number }) => {
+  list: async (params?: { page?: number; prestamo?: number; cliente?: number; fecha?: string; usuario?: number }) => {
     const response = await api.get('/pagos/', { params });
     return response.data;
   },
@@ -328,6 +334,19 @@ export const dashboardService = {
   /** Agenda de cobranza: sin detalle Pi ni montos de fondos. */
   agenda: async (params?: { search?: string }): Promise<AgendaCobrador> => {
     const response = await api.get('/dashboard/agenda/', { params });
+    return response.data;
+  },
+};
+
+// Configuracion endpoints
+export const configuracionService = {
+  get: async (): Promise<ConfiguracionSistema> => {
+    const response = await api.get('/configuracion/');
+    return response.data;
+  },
+
+  update: async (data: Partial<ConfiguracionSistema>): Promise<ConfiguracionSistema> => {
+    const response = await api.post('/configuracion/', data);
     return response.data;
   },
 };

@@ -16,6 +16,15 @@ export function Layout({ children, titulo }: LayoutProps) {
   const { user } = useAuth();
   const { path: rutaActual } = useRouter();
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [sidebarColapsado, setSidebarColapsado] = useState(() => {
+    return localStorage.getItem('sidebar_colapsado') === 'true';
+  });
+
+  const toggleSidebar = () => {
+    const nuevo = !sidebarColapsado;
+    setSidebarColapsado(nuevo);
+    localStorage.setItem('sidebar_colapsado', String(nuevo));
+  };
 
   const encabezado = titulo ?? TITULOS_RUTA[rutaActual] ?? 'CAVI';
 
@@ -43,8 +52,8 @@ export function Layout({ children, titulo }: LayoutProps) {
 
   return (
     <div class="min-h-screen bg-slate-50">
-      <aside class="fixed inset-y-0 left-0 z-50 hidden lg:block">
-        <Sidebar />
+      <aside class={`fixed inset-y-0 left-0 z-50 hidden lg:block transition-all duration-300 ${sidebarColapsado ? 'w-[80px]' : 'w-[260px]'}`}>
+        <Sidebar colapsado={sidebarColapsado} onToggleColapsar={toggleSidebar} />
       </aside>
 
       {menuAbierto && (
@@ -56,7 +65,7 @@ export function Layout({ children, titulo }: LayoutProps) {
             aria-hidden="true"
           />
           <aside
-            class="absolute inset-y-0 left-0 shadow-modal"
+            class="absolute inset-y-0 left-0 shadow-modal w-[260px]"
             role="dialog"
             aria-modal="true"
             aria-label="Menú de navegación"
@@ -66,7 +75,7 @@ export function Layout({ children, titulo }: LayoutProps) {
         </div>
       )}
 
-      <div class="lg:pl-[260px]">
+      <div class={`transition-all duration-300 ${sidebarColapsado ? 'lg:pl-[80px]' : 'lg:pl-[260px]'}`}>
         <Topbar titulo={encabezado} onAbrirMenu={() => setMenuAbierto(true)} />
         <main class="min-h-screen w-full px-4 pt-16 sm:px-6 lg:px-gutter">
           <div class="mx-auto max-w-[1600px] py-space-md">{children}</div>

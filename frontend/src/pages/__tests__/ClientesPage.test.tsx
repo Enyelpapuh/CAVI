@@ -1,4 +1,4 @@
-﻿import { render, screen, waitFor, fireEvent } from '@testing-library/preact';
+import { render, screen, waitFor, fireEvent } from '@testing-library/preact';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../services/api', () => ({
@@ -159,4 +159,43 @@ describe('ClientesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Deshabilitar/i }));
     await waitFor(() => expect(clienteService.delete).toHaveBeenCalledWith(1));
   });
+
+  it('abre el expediente personal del cliente con su informacion detallada', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Juan Perez Ramirez')).toBeInTheDocument());
+
+    // Pulsar botón "Ficha" del primer cliente
+    const botonesFicha = screen.getAllByRole('button', { name: /Ficha/i });
+    fireEvent.click(botonesFicha[0]);
+
+    // Verificar modal de expediente
+    await waitFor(() => expect(screen.getByText('Expediente del Cliente')).toBeInTheDocument());
+    expect(screen.getByText('Identificación Institucional')).toBeInTheDocument();
+    expect(screen.getByText('Contacto y Domicilio')).toBeInTheDocument();
+    expect(screen.getByText('Perfil y Actividad Económica')).toBeInTheDocument();
+    expect(screen.getByText('Registro en Sistema')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Nuevo Préstamo/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Editar Datos/i })).toBeInTheDocument();
+  });
+
+  it('filtra clientes por pestañas de estado (Todos, Activos, Inactivos)', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Juan Perez Ramirez')).toBeInTheDocument());
+
+    // Filtrar por Inactivos
+    fireEvent.click(screen.getByRole('button', { name: 'Inactivos' }));
+    expect(screen.queryByText('Juan Perez Ramirez')).not.toBeInTheDocument();
+    expect(screen.getByText('Maria Lopez')).toBeInTheDocument();
+
+    // Filtrar por Activos
+    fireEvent.click(screen.getByRole('button', { name: 'Activos' }));
+    expect(screen.getByText('Juan Perez Ramirez')).toBeInTheDocument();
+    expect(screen.queryByText('Maria Lopez')).not.toBeInTheDocument();
+
+    // Volver a Todos
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(screen.getByText('Juan Perez Ramirez')).toBeInTheDocument();
+    expect(screen.getByText('Maria Lopez')).toBeInTheDocument();
+  });
 });
+

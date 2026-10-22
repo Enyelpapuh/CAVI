@@ -27,10 +27,6 @@ export function Topbar({ titulo, onAbrirMenu }: { titulo: string; onAbrirMenu: (
           <span class="truncate text-headline-sm font-bold tracking-tight text-slate-900">{titulo}</span>
           <span class="hidden text-body-sm text-slate-500 sm:inline">/ CAVI Microcréditos</span>
         </div>
-        <span class="hidden items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1 md:flex">
-          <span class="h-2 w-2 animate-pulse rounded-full bg-green-600" aria-hidden="true" />
-          <span class="text-label-xs font-semibold text-slate-600">Servidor en Línea · Managua Central</span>
-        </span>
       </div>
 
       <div class="flex shrink-0 items-center gap-2 sm:gap-3">

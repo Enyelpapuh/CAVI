@@ -62,16 +62,26 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('FondosPage', () => {
-  it('muestra los fondos en tarjetas con saldo y capital', async () => {
+describe('FondosPage (Bolsas de Capital)', () => {
+  it('muestra resumen general con Dinero Disponible, Capital Regado y Capital Total', async () => {
     (fondoService.list as any).mockResolvedValue({ results: FONDOS });
     renderPagina();
 
     await waitFor(() => {
-      expect(screen.getByText('Fondo A')).toBeInTheDocument();
-      expect(screen.getByText('Fondo B')).toBeInTheDocument();
-      expect(screen.getAllByText(/C\$50,000\.00/).length).toBeGreaterThan(0);
+      // Métricas globales
+      expect(screen.getByText('Dinero Disponible')).toBeInTheDocument();
+      expect(screen.getByText('Capital Regado')).toBeInTheDocument();
+      expect(screen.getByText('Capital Total')).toBeInTheDocument();
+
+      // Verifica eliminación de rentabilidad y ganancias
+      expect(screen.queryByText(/Rentabilidad/i)).toBeNull();
+      expect(screen.queryByText(/Ganancias acumuladas/i)).toBeNull();
     });
+
+    // Fichas individuales de bolsas
+    expect(screen.getByText('Fondo A')).toBeInTheDocument();
+    expect(screen.getByText('Fondo B')).toBeInTheDocument();
+    expect(screen.getAllByText(/C\$50,000\.00/).length).toBeGreaterThan(0);
     expect(fondoService.list).toHaveBeenCalled();
   });
 

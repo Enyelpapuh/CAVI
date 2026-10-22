@@ -42,6 +42,7 @@ const UsuariosPage = lazy(() => import('./pages/UsuariosPage').then(m => ({ defa
 const PermisosPage = lazy(() => import('./pages/PermisosPage').then(m => ({ default: m.PermisosPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const EstadosCuentaPage = lazy(() => import('./pages/EstadosCuentaPage').then(m => ({ default: m.EstadosCuentaPage })));
+const InformeBolsasPage = lazy(() => import('./pages/InformeBolsasPage').then(m => ({ default: m.InformeBolsasPage })));
 const ArqueoPage = lazy(() => import('./pages/ArqueoPage').then(m => ({ default: m.ArqueoPage })));
 
 function AppContent() {
@@ -78,6 +79,7 @@ function AppContent() {
     else if (currentPath === '/prestamos/nuevo') PageComponent = PrestamoFormPage;
     else if (currentPath === '/cobros') PageComponent = CobrosPage;
     else if (currentPath === '/reportes/estados-cuenta') PageComponent = EstadosCuentaPage;
+    else if (currentPath === '/reportes/financiero' || currentPath === '/reportes/bolsas') PageComponent = InformeBolsasPage;
     else if (currentPath === '/reportes/arqueo') PageComponent = ArqueoPage;
     else if (currentPath === '/seguridad/usuarios') PageComponent = UsuariosPage;
     else if (currentPath === '/seguridad/permisos') PageComponent = PermisosPage;

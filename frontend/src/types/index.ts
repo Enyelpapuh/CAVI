@@ -307,3 +307,60 @@ export interface ApiError {
   non_field_errors?: string[];
   [key: string]: string | string[] | undefined;
 }
+
+export interface DesgloseFondoPeriodo {
+  fondo_id: number;
+  nombre: string;
+  familiar: string;
+  saldo_actual: string;
+  capital_reintegrado: string;
+  ganancia_interes: string;
+  total_acreditado: string;
+  desembolsos_mes: string;
+  flujo_neto: string;
+  cantidad_abonos: number;
+}
+
+export interface TransaccionPeriodo {
+  pago_id: number;
+  codigo_comprobante: string;
+  fecha_pago: string;
+  cliente: string;
+  prestamo_id: number;
+  fondo_id: number;
+  fondo_nombre: string;
+  porcentaje_pi: string;
+  capital_reintegrado: string;
+  ganancia_interes: string;
+  metodo_pago: string;
+  referencia_bancaria: string;
+}
+
+export interface InformeFinancieroResponse {
+  mes: number;
+  anio: number;
+  resumen: {
+    total_recaudado: string;
+    capital_retornado: string;
+    interes_total: string;
+    interes_fondos: string;
+    interes_admin: string;
+    mora_total: string;
+    desembolsos_mes: string;
+    flujo_neto: string;
+    cantidad_pagos: number;
+  };
+  desglose_fondos: DesgloseFondoPeriodo[];
+  transacciones: TransaccionPeriodo[];
+}
+
+export interface ConfiguracionSistema {
+  id: number;
+  modo_estricto: boolean;
+  permitir_superar_usura: boolean;
+  tasa_maxima_legal: string;
+  dias_gracia: number;
+  permitir_plazo_indefinido: boolean;
+  tasa_mora_diaria: string;
+  actualizado_en: string;
+}

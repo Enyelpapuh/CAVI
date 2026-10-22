@@ -11,11 +11,13 @@ import {
   Modal,
   Select,
   Spinner,
+  StatusBadge,
   type Columna,
 } from '../components/ui';
 import { clienteService, fondoService, prestamoService } from '../services/api';
 import { BotonPagare } from '../components/BotonPagare';
 import { fmtMonto, fmtNumero, fmtFecha, iniciales } from '../lib/format';
+import { desglosarCedula, formatearCedula, formatearTelefono } from '../lib/cedula';
 import type { Cliente, Fondo, PeriodoCuota, Prestamo, Proyeccion } from '../types';
 
 interface FondoAporte {
@@ -30,27 +32,46 @@ const PERIODICIDADES = [
   { value: 'QUINCENAL', label: 'Quincenal' },
 ];
 
+const PRESETS_MONTOS = [10000, 25000, 50000, 100000];
+const PRESETS_PLAZOS = [3, 6, 12, 18, 24];
+const PRESETS_TASAS = [
+  { label: '2.0% (0.0200)', value: '0.0200' },
+  { label: '2.5% (0.0250)', value: '0.0250' },
+  { label: '3.0% (0.0300)', value: '0.0300' },
+  { label: '5.0% (0.0500)', value: '0.0500' },
+  { label: '10.0% (0.1000) Histórica', value: '0.1000' },
+];
+
 export function PrestamoFormPage() {
+  const [pasoActual, setPasoActual] = useState<1 | 2 | 3 | 4>(1);
+
+  // Paso 1: Cliente
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteSearch, setClienteSearch] = useState('');
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [clienteLabel, setClienteLabel] = useState('');
+  const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
 
-  const [fondos, setFondos] = useState<Fondo[]>([]);
-  const [fondosLoading, setFondosLoading] = useState(true);
-
+  // Paso 2: Condiciones
   const [montoPrincipal, setMontoPrincipal] = useState('');
   const [tasaInteres, setTasaInteres] = useState('0.0250');
   const [plazoMeses, setPlazoMeses] = useState('12');
+  const [esPlazoIndefinido, setEsPlazoIndefinido] = useState(false);
   const [periodicidad, setPeriodicidad] = useState<'MENSUAL' | 'QUINCENAL'>('MENSUAL');
   const [fechaDesembolso, setFechaDesembolso] = useState('');
   const [fechaPrimerCorte, setFechaPrimerCorte] = useState('');
+
+  // Paso 3: Fondeo
+  const [fondos, setFondos] = useState<Fondo[]>([]);
+  const [fondosLoading, setFondosLoading] = useState(true);
   const [aportes, setAportes] = useState<FondoAportes>({});
 
+  // Simulación y Backend
   const [simulacion, setSimulacion] = useState<Proyeccion | null>(null);
   const [simulando, setSimulando] = useState(false);
 
+  // Envío y estado final
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
@@ -97,22 +118,52 @@ export function PrestamoFormPage() {
 
   const montoPrincipalNum = Number(montoPrincipal) || 0;
   const faltante = montoPrincipalNum - totalAportado;
+  const coberturaPorcentaje =
+    montoPrincipalNum > 0 ? Math.min(100, Math.max(0, (totalAportado / montoPrincipalNum) * 100)) : 0;
+
+  // Validaciones por paso
+  const paso1Valido = !!clienteId;
+
+  const paso2Valido =
+    montoPrincipalNum > 0 &&
+    (esPlazoIndefinido ? true : Number(plazoMeses) > 0) &&
+    Number(tasaInteres) >= 0 &&
+    !!fechaDesembolso &&
+    !!fechaPrimerCorte &&
+    (!fechaDesembolso || !fechaPrimerCorte || fechaPrimerCorte >= fechaDesembolso);
+
+  const fondosSeleccionados = useMemo(
+    () => Object.keys(aportes).filter((k) => (Number(aportes[Number(k)].monto_aportado) || 0) > 0),
+    [aportes]
+  );
+
+  const fondosConSobreSaldo = useMemo(() => {
+    return fondosSeleccionados.filter((k) => {
+      const id = Number(k);
+      const fondo = fondos.find((f) => f.id === id);
+      return fondo && Number(aportes[id].monto_aportado) > Number(fondo.saldo_disponible);
+    });
+  }, [fondosSeleccionados, aportes, fondos]);
+
+  const paso3Valido =
+    fondosSeleccionados.length > 0 &&
+    Math.abs(totalAportado - montoPrincipalNum) <= 0.01 &&
+    Math.abs(sumaPi - 1) <= 0.0001 &&
+    fondosConSobreSaldo.length === 0;
 
   const validaciones = useMemo(() => {
     const errors: string[] = [];
-    if (!clienteId) errors.push('Seleccione un cliente');
+    if (!clienteId) errors.push('Seleccione un cliente titular');
     if (montoPrincipalNum <= 0) errors.push('El monto principal debe ser mayor a cero');
-    if (!(Number(plazoMeses) > 0)) errors.push('El plazo debe ser mayor a cero');
+    if (!esPlazoIndefinido && !(Number(plazoMeses) > 0)) errors.push('El plazo debe ser mayor a cero');
     if (!(Number(tasaInteres) >= 0)) errors.push('La tasa de interés es inválida');
     if (!fechaDesembolso) errors.push('Indique la fecha de desembolso');
     if (!fechaPrimerCorte) errors.push('Indique la fecha del primer corte');
     if (fechaDesembolso && fechaPrimerCorte && fechaPrimerCorte < fechaDesembolso)
       errors.push('El primer corte no puede ser antes del desembolso');
 
-    const fondosSeleccionados = Object.keys(aportes).filter(
-      (k) => (Number(aportes[Number(k)].monto_aportado) || 0) > 0
-    );
-    if (fondosSeleccionados.length === 0) errors.push('Seleccione al menos un fondo con monto aportado');
+    if (fondosSeleccionados.length === 0)
+      errors.push('Seleccione al menos un fondo con monto aportado');
     if (Math.abs(totalAportado - montoPrincipalNum) > 0.01) {
       errors.push(
         `La suma de aportes (${totalAportado.toFixed(2)}) debe igualar el monto principal (${montoPrincipalNum.toFixed(2)})`
@@ -121,10 +172,10 @@ export function PrestamoFormPage() {
     if (Math.abs(sumaPi - 1) > 0.0001) {
       errors.push(`La suma de Pi (${sumaPi.toFixed(4)}) debe ser 1.0000 (100%)`);
     }
-    for (const k of fondosSeleccionados) {
+    for (const k of fondosConSobreSaldo) {
       const id = Number(k);
       const fondo = fondos.find((f) => f.id === id);
-      if (fondo && Number(aportes[id].monto_aportado) > Number(fondo.saldo_disponible)) {
+      if (fondo) {
         errors.push(
           `El fondo '${fondo.nombre}' no tiene saldo suficiente (${fmtMonto(fondo.saldo_disponible)})`
         );
@@ -135,12 +186,14 @@ export function PrestamoFormPage() {
     clienteId,
     montoPrincipalNum,
     plazoMeses,
+    esPlazoIndefinido,
     tasaInteres,
     fechaDesembolso,
     fechaPrimerCorte,
-    aportes,
+    fondosSeleccionados,
     totalAportado,
     sumaPi,
+    fondosConSobreSaldo,
     fondos,
   ]);
 
@@ -148,7 +201,8 @@ export function PrestamoFormPage() {
 
   /** Cotizador: usa POST /api/prestamos/simular/ (no persiste nada). */
   useEffect(() => {
-    if (montoPrincipalNum <= 0 || !(Number(plazoMeses) > 0) || !(Number(tasaInteres) >= 0)) {
+    const plazoValido = esPlazoIndefinido ? true : Number(plazoMeses) > 0;
+    if (montoPrincipalNum <= 0 || !plazoValido || !(Number(tasaInteres) >= 0)) {
       setSimulacion(null);
       return;
     }
@@ -159,7 +213,7 @@ export function PrestamoFormPage() {
         .simular({
           monto_principal: montoPrincipal,
           tasa_interes: tasaInteres,
-          plazo_meses: Number(plazoMeses),
+          plazo_meses: esPlazoIndefinido ? 0 : Number(plazoMeses),
           periodicidad,
           ...(fechaPrimerCorte ? { fecha_primer_corte: fechaPrimerCorte } : {}),
         })
@@ -167,7 +221,6 @@ export function PrestamoFormPage() {
           if (vigente) setSimulacion(data);
         })
         .catch(() => {
-          // Tasa de usura u otro rechazo: el backend lo valida al crear también.
           if (vigente) setSimulacion(null);
         })
         .finally(() => {
@@ -178,7 +231,7 @@ export function PrestamoFormPage() {
       vigente = false;
       clearTimeout(temporizador);
     };
-  }, [montoPrincipal, tasaInteres, plazoMeses, periodicidad, fechaPrimerCorte, montoPrincipalNum]);
+  }, [montoPrincipal, tasaInteres, plazoMeses, esPlazoIndefinido, periodicidad, fechaPrimerCorte, montoPrincipalNum]);
 
   const toggleFondo = (fondoId: number) => {
     setAportes((prev) => {
@@ -223,9 +276,26 @@ export function PrestamoFormPage() {
   const selectCliente = (c: Cliente) => {
     const etiqueta = `${c.nombres} ${c.apellidos} - ${c.cedula}`;
     setClienteId(c.id);
+    setClienteSeleccionado(c);
     setClienteLabel(etiqueta);
     setClienteSearch(etiqueta);
     setShowClienteDropdown(false);
+  };
+
+  const deseleccionarCliente = () => {
+    setClienteId(null);
+    setClienteSeleccionado(null);
+    setClienteLabel('');
+    setClienteSearch('');
+    setShowClienteDropdown(false);
+  };
+
+  const aplicarFechaHoy = () => {
+    const hoy = new Date().toISOString().split('T')[0];
+    setFechaDesembolso(hoy);
+    const dias = periodicidad === 'QUINCENAL' ? 15 : 30;
+    const corte = new Date(Date.now() + dias * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    setFechaPrimerCorte(corte);
   };
 
   const handleSubmit = async () => {
@@ -244,7 +314,7 @@ export function PrestamoFormPage() {
         cliente: clienteId!,
         monto_principal: montoPrincipal,
         tasa_interes: tasaInteres,
-        plazo_meses: Number(plazoMeses),
+        plazo_meses: esPlazoIndefinido ? 0 : Number(plazoMeses),
         periodicidad,
         fecha_desembolso: fechaDesembolso,
         fecha_primer_corte: fechaPrimerCorte,
@@ -273,7 +343,9 @@ export function PrestamoFormPage() {
   };
 
   const resetForm = () => {
+    setPasoActual(1);
     setClienteId(null);
+    setClienteSeleccionado(null);
     setClienteLabel('');
     setClienteSearch('');
     setMontoPrincipal('');
@@ -293,7 +365,7 @@ export function PrestamoFormPage() {
       key: 'periodo',
       header: '#',
       width: '60px',
-      render: (periodo) => <span class="tnum text-slate-600">{periodo.periodo}</span>,
+      render: (periodo) => <span class="tnum text-slate-600 font-medium">{periodo.periodo}</span>,
     },
     {
       key: 'vencimiento',
@@ -319,7 +391,7 @@ export function PrestamoFormPage() {
       header: 'Cuota',
       align: 'right',
       render: (periodo) => (
-        <span class="tnum font-semibold text-slate-900">{fmtMonto(periodo.cuota)}</span>
+        <span class="tnum font-bold text-slate-900">{fmtMonto(periodo.cuota)}</span>
       ),
     },
     {
@@ -338,25 +410,62 @@ export function PrestamoFormPage() {
     [fondos, aportes]
   );
 
+  const infoCedulaCliente = useMemo(() => {
+    if (!clienteSeleccionado?.cedula) return null;
+    return desglosarCedula(clienteSeleccionado.cedula);
+  }, [clienteSeleccionado]);
+
+  const pasos = [
+    {
+      id: 1,
+      titulo: '1. Cliente',
+      descripcion: 'Titular del crédito',
+      valido: paso1Valido,
+      icono: 'person',
+    },
+    {
+      id: 2,
+      titulo: '2. Condiciones',
+      descripcion: 'Monto, plazos y fechas',
+      valido: paso2Valido,
+      icono: 'payments',
+    },
+    {
+      id: 3,
+      titulo: '3. Fondeo',
+      descripcion: 'Multifondo familiar',
+      valido: paso3Valido,
+      icono: 'savings',
+    },
+    {
+      id: 4,
+      titulo: '4. Revisión',
+      descripcion: 'Amortización y desembolso',
+      valido: canSubmit,
+      icono: 'assignment_turned_in',
+    },
+  ];
+
   return (
     <Layout titulo="Nuevo Préstamo">
       <PageHeader
         titulo="Solicitud de Crédito"
-        descripcion="Desembolso multifondo con interés sobre saldo insoluto (Ley 176, sin anatocismo)"
+        descripcion="Formulario asistido por páginas: multifondo familiar con interés sobre saldo insoluto (Ley 176)"
       />
 
       {createdPrestamo ? (
-        <Card class="text-center">
-          <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-green-600">
-            <Icon name="check_circle" size={32} />
+        <Card class="text-center py-10 max-w-2xl mx-auto shadow-sm">
+          <span class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/50">
+            <Icon name="check_circle" size={40} />
           </span>
-          <h2 class="mt-4 text-headline-md text-slate-900">
+          <h2 class="mt-5 text-headline-md font-bold text-slate-900">
             Préstamo #{createdPrestamo.id} creado exitosamente
           </h2>
-          <p class="mt-1 text-body-md text-slate-500">
-            {createdPrestamo.cliente_nombre} · {fmtMonto(createdPrestamo.monto_principal)}
+          <p class="mt-2 text-body-md text-slate-600">
+            <span class="font-semibold text-slate-800">{createdPrestamo.cliente_nombre}</span> · Desembolso de{' '}
+            <span class="font-bold text-emerald-700">{fmtMonto(createdPrestamo.monto_principal)}</span>
           </p>
-          <div class="mt-6 flex flex-wrap justify-center gap-3">
+          <div class="mt-8 flex flex-wrap justify-center gap-3">
             <BotonPagare
               prestamoId={createdPrestamo.id}
               variant="primary"
@@ -370,349 +479,777 @@ export function PrestamoFormPage() {
               Ir a Cobranza
             </Button>
           </div>
-          <p class="mt-3 text-body-sm text-slate-500">
-            Entregue el pagaré firmado al cliente: es el título valor del crédito (CAVI-TK25).
+          <p class="mt-4 text-body-xs text-slate-400">
+            Entregue el pagaré firmado al cliente como título ejecutivo del crédito (CAVI-TK25 / Art. 3180 C.C.).
           </p>
           {serverError && (
-            <p class="mt-2 text-body-sm text-red-700" role="alert">
+            <p class="mt-3 text-body-sm text-red-700 bg-red-50 p-2 rounded border border-red-200" role="alert">
               {serverError}
             </p>
           )}
         </Card>
       ) : (
-        <div class="grid gap-4 lg:grid-cols-3">
-          <div class="space-y-4">
-            <Card title="Datos del Cliente">
-              <Input
-                label="Cliente"
-                value={clienteSearch}
-                onInput={(valor) => {
-                  setClienteSearch(valor);
-                  setClienteId(null);
-                  setShowClienteDropdown(true);
-                }}
-                placeholder="Buscar por nombre o cédula..."
-                hint={clienteId ? `✓ Cliente seleccionado: ${clienteLabel}` : undefined}
-              />
-              {showClienteDropdown && (
-                <ul class="mt-2 max-h-64 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-popover">
-                  {clientes.filter((c) => c.activo).length === 0 ? (
-                    <li class="px-4 py-3 text-body-md text-slate-500">Sin resultados</li>
-                  ) : (
-                    clientes
-                      .filter((c) => c.activo)
-                      .map((c) => (
-                        <li key={c.id}>
-                          <button
-                            type="button"
-                            onClick={() => selectCliente(c)}
-                            class="flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-slate-50"
-                          >
-                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-label-xs font-bold text-slate-600">
-                              {iniciales(`${c.nombres} ${c.apellidos}`)}
-                            </span>
-                            <span class="min-w-0">
-                              <span class="block truncate text-body-md font-medium text-slate-800">
-                                {c.nombres} {c.apellidos}
-                              </span>
-                              <span class="tnum block text-body-sm text-slate-500">{c.cedula}</span>
-                            </span>
-                          </button>
-                        </li>
-                      ))
-                  )}
-                </ul>
-              )}
-            </Card>
+        <div class="space-y-6">
+          {/* Barra de Progreso y Stepper de Páginas */}
+          <nav aria-label="Progreso del formulario de préstamo" class="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {pasos.map((p) => {
+                const esActivo = pasoActual === p.id;
+                const esCompletado = p.valido && pasoActual > p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPasoActual(p.id as 1 | 2 | 3 | 4)}
+                    aria-current={esActivo ? 'step' : undefined}
+                    class={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all ${
+                      esActivo
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : esCompletado
+                        ? 'bg-emerald-50/70 text-emerald-950 hover:bg-emerald-100/60'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span
+                      class={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                        esActivo
+                          ? 'bg-white text-slate-900'
+                          : esCompletado
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-white text-slate-500 border border-slate-200'
+                      }`}
+                    >
+                      {esCompletado ? <Icon name="check" size={16} /> : p.id}
+                    </span>
+                    <div class="min-w-0">
+                      <p class="truncate text-label-sm font-semibold">{p.titulo}</p>
+                      <p
+                        class={`truncate text-body-xs ${
+                          esActivo ? 'text-slate-300' : esCompletado ? 'text-emerald-700' : 'text-slate-400'
+                        }`}
+                      >
+                        {p.descripcion}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
 
-            <Card title="Condiciones del Préstamo">
-              <div class="space-y-4">
-                <Input
-                  label="Monto principal (C$)"
-                  value={montoPrincipal}
-                  onInput={setMontoPrincipal}
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  prefix="C$"
-                  required
-                />
-                <div class="grid gap-4 sm:grid-cols-2">
-                  <Input
-                    label="Tasa mensual"
-                    value={tasaInteres}
-                    onInput={setTasaInteres}
-                    type="number"
-                    step="0.0001"
-                    min="0"
-                    hint="Decimal, ej: 0.0250"
-                  />
-                  <Input
-                    label="Plazo (meses)"
-                    value={plazoMeses}
-                    onInput={setPlazoMeses}
-                    type="number"
-                    min="1"
-                  />
-                </div>
-                <Select
-                  label="Periodicidad"
-                  value={periodicidad}
-                  onChange={(valor) => setPeriodicidad(valor as 'MENSUAL' | 'QUINCENAL')}
-                  options={PERIODICIDADES}
-                />
-                <div class="grid gap-4 sm:grid-cols-2">
-                  <Input
-                    label="Fecha desembolso"
-                    value={fechaDesembolso}
-                    onInput={setFechaDesembolso}
-                    type="date"
-                  />
-                  <Input
-                    label="Fecha primer corte"
-                    value={fechaPrimerCorte}
-                    onInput={setFechaPrimerCorte}
-                    type="date"
-                  />
-                </div>
-              </div>
-            </Card>
-          </div>
+          {/* ============================================================== */}
+          {/* PÁGINA 1: CLIENTE */}
+          {/* ============================================================== */}
+          {pasoActual === 1 && (
+            <div class="space-y-6">
+              <Card
+                title="Paso 1: Titular del Préstamo"
+                subtitle="Seleccione o busque el prestatario titular en la base de clientes"
+              >
+                <div class="max-w-2xl space-y-4">
+                  <div class="relative">
+                    <Input
+                      label="Cliente"
+                      value={clienteSearch}
+                      onInput={(valor) => {
+                        setClienteSearch(valor);
+                        setClienteId(null);
+                        setClienteSeleccionado(null);
+                        setShowClienteDropdown(true);
+                      }}
+                      placeholder="Escriba el nombre o número de cédula..."
+                      hint={clienteId ? `✓ Cliente seleccionado: ${clienteLabel}` : 'Búsqueda en tiempo real por nombre, apellidos o número de cédula'}
+                    />
 
-          <div class="space-y-4 lg:col-span-2">
-            <Card
-              title="Distribución Multifondo"
-              subtitle="Los aportes deben sumar el monto principal y Σ Pi = 1.0000"
-              action={
+                    {showClienteDropdown && (
+                      <ul class="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5">
+                        {clientes.filter((c) => c.activo).length === 0 ? (
+                          <li class="px-4 py-3 text-body-md text-slate-500">
+                            {clienteSearch ? 'No se encontraron clientes activos coincidentes' : 'Escriba para buscar clientes...'}
+                          </li>
+                        ) : (
+                          clientes
+                            .filter((c) => c.activo)
+                            .map((c) => (
+                              <li key={c.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => selectCliente(c)}
+                                  class="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-slate-50"
+                                >
+                                  <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-label-xs font-bold text-slate-700">
+                                    {iniciales(`${c.nombres} ${c.apellidos}`)}
+                                  </span>
+                                  <div class="min-w-0 flex-1">
+                                    <span class="block truncate text-body-md font-semibold text-slate-900">
+                                      {c.nombres} {c.apellidos}
+                                    </span>
+                                    <div class="flex items-center gap-2 text-body-xs text-slate-500">
+                                      <span class="tnum font-mono">{formatearCedula(c.cedula)}</span>
+                                      {c.telefono && (
+                                        <>
+                                          <span>·</span>
+                                          <span>Tel: {formatearTelefono(c.telefono)}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </button>
+                              </li>
+                            ))
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                {clienteSeleccionado ? (
+                  <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/40 p-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div class="flex items-center gap-3.5">
+                        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white font-bold text-headline-sm">
+                          {iniciales(`${clienteSeleccionado.nombres} ${clienteSeleccionado.apellidos}`)}
+                        </span>
+                        <div>
+                          <div class="flex items-center gap-2">
+                            <h3 class="text-headline-sm font-bold text-slate-900">
+                              {clienteSeleccionado.nombres} {clienteSeleccionado.apellidos}
+                            </h3>
+                            <StatusBadge status="COMPLETO" label="Activo" />
+                          </div>
+                          <p class="font-mono text-body-sm font-semibold text-emerald-800">
+                            Cédula: {formatearCedula(clienteSeleccionado.cedula)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button variant="secondary" size="sm" icon="sync" onClick={deseleccionarCliente}>
+                        Cambiar Titular
+                      </Button>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-emerald-200/60 pt-4 text-body-sm text-slate-700">
+                      <div>
+                        <span class="block text-body-xs font-medium text-slate-500">Teléfono:</span>
+                        <span class="font-medium">
+                          {clienteSeleccionado.telefono ? formatearTelefono(clienteSeleccionado.telefono) : 'No registrado'}
+                        </span>
+                      </div>
+                      <div>
+                        <span class="block text-body-xs font-medium text-slate-500">Origen / Emisión:</span>
+                        <span class="font-medium">
+                          {infoCedulaCliente?.departamento ? `${infoCedulaCliente.departamento} (${infoCedulaCliente.municipio})` : 'N/D'}
+                        </span>
+                      </div>
+                      <div>
+                        <span class="block text-body-xs font-medium text-slate-500">Dirección:</span>
+                        <span class="font-medium truncate block" title={clienteSeleccionado.direccion}>
+                          {clienteSeleccionado.direccion || 'No especificada'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div class="mt-6 rounded-xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
+                    <span class="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <Icon name="person_search" size={24} />
+                    </span>
+                    <p class="font-medium text-slate-700">Ningún cliente seleccionado</p>
+                    <p class="text-body-xs text-slate-500 mt-0.5">
+                      Utilice la barra superior para buscar y vincular el prestatario de este crédito.
+                    </p>
+                  </div>
+                )}
+              </Card>
+
+              {/* Pie de navegación de página 1 */}
+              <div class="flex justify-end gap-3 pt-2">
                 <Button
-                  size="sm"
-                  icon="auto_awesome"
-                  variant="secondary"
-                  onClick={distribuirAutomatico}
-                  disabled={Object.keys(aportes).length === 0 || montoPrincipalNum <= 0}
+                  size="lg"
+                  icon="arrow_forward"
+                  disabled={!paso1Valido}
+                  onClick={() => setPasoActual(2)}
                 >
-                  Distribuir automático
+                  Siguiente: Condiciones Financieras
                 </Button>
-              }
-              padded={false}
-            >
-              {fondosLoading ? (
-                <div class="flex justify-center py-10">
-                  <Spinner size={32} />
-                </div>
-              ) : fondos.length === 0 ? (
-                <EmptyState
-                  icon="savings"
-                  title="No hay fondos con saldo disponible"
-                  description="Cree o inyecte capital en una bolsa antes de otorgar un crédito."
-                />
-              ) : (
-                <div class="overflow-x-auto">
-                  <table class="w-full border-collapse text-body-md">
-                    <thead>
-                      <tr class="h-9 border-b border-slate-200 bg-slate-50">
-                        <th scope="col" class="w-10 px-3" />
-                        <th scope="col" class="px-3 text-left text-label-xs font-semibold uppercase text-slate-500">
-                          Fondo
-                        </th>
-                        <th scope="col" class="px-3 text-right text-label-xs font-semibold uppercase text-slate-500">
-                          Saldo disponible
-                        </th>
-                        <th scope="col" class="px-3 text-left text-label-xs font-semibold uppercase text-slate-500">
-                          Monto aportado
-                        </th>
-                        <th scope="col" class="px-3 text-left text-label-xs font-semibold uppercase text-slate-500">
-                          % Pi
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fondos.map((fondo) => {
-                        const activo = !!aportes[fondo.id];
-                        const aporte = aportes[fondo.id];
-                        const sobreSaldo =
-                          activo && Number(aporte.monto_aportado) > Number(fondo.saldo_disponible);
-                        return (
-                          <tr
-                            key={fondo.id}
-                            class={`border-b border-slate-100 last:border-0 ${activo ? 'bg-indigo-50/40' : ''}`}
-                          >
-                            <td class="px-3 py-2">
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* PÁGINA 2: CONDICIONES FINANCIERAS */}
+          {/* ============================================================== */}
+          {pasoActual === 2 && (
+            <div class="space-y-6">
+              <div class="grid gap-6 lg:grid-cols-3">
+                <div class="lg:col-span-2 space-y-6">
+                  <Card
+                    title="Paso 2: Condiciones del Préstamo"
+                    subtitle="Establezca el capital, tasa mensual, plazo y fechas de corte (Ley 176)"
+                  >
+                    <div class="space-y-5">
+                      <div>
+                        <Input
+                          label="Monto principal (C$)"
+                          value={montoPrincipal}
+                          onInput={setMontoPrincipal}
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          prefix="C$"
+                          required
+                          placeholder="Ej: 50000.00"
+                        />
+                        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span class="text-body-xs text-slate-400 mr-1">Montos rápidos:</span>
+                          {PRESETS_MONTOS.map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setMontoPrincipal(String(m))}
+                              class="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-body-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-100 transition-colors"
+                            >
+                              C${m.toLocaleString('es-NI')}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div class="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <Input
+                            label="Tasa mensual"
+                            value={tasaInteres}
+                            onInput={setTasaInteres}
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            hint="Decimal mensual, ej: 0.0250 para 2.50%"
+                          />
+                          <div class="mt-2 flex flex-wrap items-center gap-1">
+                            {PRESETS_TASAS.map((t) => (
+                              <button
+                                key={t.value}
+                                type="button"
+                                onClick={() => setTasaInteres(t.value)}
+                                class={`rounded-md border px-2 py-0.5 text-body-xs font-medium transition-colors ${
+                                  tasaInteres === t.value
+                                    ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                {t.label.split(' ')[0]}
+                              </button>
+                            ))}
+                          </div>
+                          {Number(tasaInteres) > 0.0300 && (
+                            <div class="mt-2 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-1.5">
+                              <Icon name="alert-triangle" size={14} />
+                              Tasa histórica / especial: supera el tope legal del BCN (3.00% m.)
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div class="flex items-center justify-between mb-1">
+                            <label class="block text-label-sm font-semibold text-slate-700">
+                              Plazo {esPlazoIndefinido ? '(Indefinido)' : '(meses)'}
+                            </label>
+                            <label class="inline-flex items-center gap-1.5 cursor-pointer text-body-xs font-semibold text-indigo-700">
                               <input
                                 type="checkbox"
-                                aria-label={`Usar fondo ${fondo.nombre}`}
-                                checked={activo}
-                                onChange={() => toggleFondo(fondo.id)}
-                                class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                checked={esPlazoIndefinido}
+                                onChange={(e) => {
+                                  const checked = (e.target as HTMLInputElement).checked;
+                                  setEsPlazoIndefinido(checked);
+                                  setPlazoMeses(checked ? '0' : '12');
+                                }}
+                                class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                               />
-                            </td>
-                            <td class="px-3 py-2">
-                              <span class="block font-medium text-slate-900">{fondo.nombre}</span>
-                              <span class="block text-body-sm text-slate-500">{fondo.familiar}</span>
-                            </td>
-                            <td class="tnum px-3 py-2 text-right text-slate-700">
-                              {fmtMonto(fondo.saldo_disponible)}
-                            </td>
-                            <td class="px-3 py-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                aria-label={`Monto aportado ${fondo.nombre}`}
-                                disabled={!activo}
-                                value={activo ? aporte.monto_aportado : ''}
-                                onInput={(e) => handleMontoAportado(fondo.id, e.currentTarget.value)}
-                                placeholder="0.00"
-                                class={`tnum w-32 rounded-md border px-3 py-1.5 outline-none transition-colors focus:border-green-600 focus:ring-1 focus:ring-green-600 disabled:bg-slate-50 disabled:text-slate-400 ${
-                                  sobreSaldo ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                                }`}
-                              />
-                            </td>
-                            <td class="px-3 py-2">
-                              <input
-                                type="number"
-                                step="0.0001"
-                                min="0"
-                                max="1"
-                                aria-label={`% Pi ${fondo.nombre}`}
-                                disabled={!activo}
-                                value={activo ? aporte.porcentaje_pi : ''}
-                                onInput={(e) => handlePiChange(fondo.id, e.currentTarget.value)}
-                                placeholder="0.0000"
-                                class="tnum w-32 rounded-md border border-slate-300 px-3 py-1.5 outline-none transition-colors focus:border-green-600 focus:ring-1 focus:ring-green-600 disabled:bg-slate-50 disabled:text-slate-400"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
+                              Plazo Indefinido
+                            </label>
+                          </div>
 
-            <Card
-              title="Simulación de cuota"
-              subtitle="Cálculo real del backend (Ley 176). No se persiste nada."
-              action={
-                simulando ? (
-                  <span class="flex items-center gap-2 text-body-sm text-slate-500">
-                    <Spinner size={16} /> Calculando
-                  </span>
-                ) : null
-              }
-            >
-              {simulacion ? (
-                <>
-                  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          {esPlazoIndefinido ? (
+                            <div class="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 text-body-xs text-indigo-900 space-y-1">
+                              <div class="font-bold flex items-center gap-1.5 text-indigo-800">
+                                <Icon name="info" size={14} />
+                                Crédito de Periodo Indefinido
+                              </div>
+                              <p class="text-[12px] leading-relaxed">
+                                La cuota mensual es exactamente el <strong>100% del interés sobre el saldo restante de capital</strong> (ej: {(Number(tasaInteres) * 100).toFixed(1)}%). Todo abono mayor reduce capital directamente.
+                              </p>
+                            </div>
+                          ) : (
+                            <>
+                              <Input
+                                value={plazoMeses}
+                                onInput={setPlazoMeses}
+                                type="number"
+                                min="1"
+                                placeholder="Ej: 12"
+                              />
+                              <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                                <span class="text-body-xs text-slate-400 mr-1">Plazos:</span>
+                                {PRESETS_PLAZOS.map((plazo) => (
+                                  <button
+                                    key={plazo}
+                                    type="button"
+                                    onClick={() => setPlazoMeses(String(plazo))}
+                                    class={`rounded-md border px-2 py-0.5 text-body-xs font-medium transition-colors ${
+                                      plazoMeses === String(plazo)
+                                        ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {plazo}m
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <Select
+                          label="Periodicidad"
+                          value={periodicidad}
+                          onChange={(valor) => setPeriodicidad(valor as 'MENSUAL' | 'QUINCENAL')}
+                          options={PERIODICIDADES}
+                        />
+                      </div>
+
+                      <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                          <span class="text-label-sm font-semibold text-slate-700">Cronograma de fechas</span>
+                          <button
+                            type="button"
+                            onClick={aplicarFechaHoy}
+                            class="text-body-xs font-medium text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
+                          >
+                            Establecer hoy y +1 ciclo
+                          </button>
+                        </div>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                          <Input
+                            label="Fecha desembolso"
+                            value={fechaDesembolso}
+                            onInput={setFechaDesembolso}
+                            type="date"
+                          />
+                          <Input
+                            label="Fecha primer corte"
+                            value={fechaPrimerCorte}
+                            onInput={setFechaPrimerCorte}
+                            type="date"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Panel lateral: Pre-visualización de cuota */}
+                <div class="space-y-4">
+                  <Card
+                    title="Simulación de Cuota"
+                    subtitle="Cálculo oficial backend (Ley 176)"
+                    action={
+                      simulando ? (
+                        <span class="flex items-center gap-1 text-body-xs text-slate-500">
+                          <Spinner size={14} /> Calculando
+                        </span>
+                      ) : null
+                    }
+                  >
+                    {simulacion ? (
+                      <div class="space-y-4">
+                        <div class="rounded-xl bg-slate-900 p-4 text-white">
+                          <p class="text-label-xs uppercase tracking-wider text-slate-400">Cuota estimada por periodo</p>
+                          <p class="tnum mt-1 text-headline-lg font-extrabold text-emerald-400">
+                            {fmtMonto(simulacion.periodos[0]?.cuota)}
+                          </p>
+                          <p class="mt-1 text-body-xs text-slate-400">
+                            Frecuencia {periodicidad.toLowerCase()} ({simulacion.total_periodos} pagos en total)
+                          </p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-body-sm">
+                          <div class="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                            <span class="block text-body-xs text-slate-500">Total a pagar:</span>
+                            <span class="tnum font-bold text-slate-900">{fmtMonto(simulacion.total_cuotas)}</span>
+                          </div>
+                          <div class="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                            <span class="block text-body-xs text-slate-500">Interés total:</span>
+                            <span class="tnum font-bold text-amber-600">{fmtMonto(simulacion.total_interes)}</span>
+                          </div>
+                        </div>
+
+                        <p class="text-body-xs text-slate-500">
+                          Tasa periódica aplicada:{' '}
+                          <span class="font-medium text-slate-700">
+                            {fmtNumero(Number(simulacion.tasa_periodica) * 100)}%
+                          </span>{' '}
+                          (sin anatocismo).
+                        </p>
+                      </div>
+                    ) : (
+                      <div class="py-6 text-center text-slate-400">
+                        <Icon name="query_stats" size={32} class="mx-auto mb-2 text-slate-300" />
+                        <p class="text-body-sm font-medium text-slate-600">Sin simulación</p>
+                        <p class="text-body-xs text-slate-400 mt-1">
+                          Ingrese monto, tasa y plazo para ver el cálculo proyectado.
+                        </p>
+                      </div>
+                    )}
+                  </Card>
+                </div>
+              </div>
+
+              {/* Pie de navegación de página 2 */}
+              <div class="flex items-center justify-between pt-2">
+                <Button variant="secondary" icon="arrow_back" onClick={() => setPasoActual(1)}>
+                  Anterior: Cliente
+                </Button>
+                <Button
+                  size="lg"
+                  icon="arrow_forward"
+                  disabled={!paso2Valido}
+                  onClick={() => setPasoActual(3)}
+                >
+                  Siguiente: Fondeo Multifondo
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* PÁGINA 3: FONDEO MULTIFONDO */}
+          {/* ============================================================== */}
+          {pasoActual === 3 && (
+            <div class="space-y-6">
+              {/* Barra de Cobertura de Capital */}
+              <Card class="bg-gradient-to-r from-slate-900 to-slate-800 text-white border-0 shadow-md">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <span class="text-label-xs uppercase tracking-wider text-slate-400">Monto total a fondear</span>
+                    <p class="tnum text-headline-lg font-black text-white">{fmtMonto(montoPrincipalNum)}</p>
+                  </div>
+                  <div class="grid grid-cols-3 gap-4 text-left sm:text-right">
                     <div>
-                      <p class="text-label-sm uppercase text-slate-500">Cuota estimada</p>
-                      <p class="tnum text-headline-lg font-extrabold text-slate-900">
-                        {fmtMonto(simulacion.periodos[0]?.cuota)}
-                      </p>
+                      <span class="block text-body-xs text-slate-400">Asignado:</span>
+                      <span class="tnum font-bold text-emerald-400">{fmtMonto(totalAportado)}</span>
                     </div>
                     <div>
-                      <p class="text-label-sm uppercase text-slate-500">Periodos</p>
-                      <p class="tnum text-headline-sm font-bold text-slate-900">
-                        {simulacion.total_periodos}
-                      </p>
+                      <span class="block text-body-xs text-slate-400">Diferencia:</span>
+                      <span
+                        class={`tnum font-bold ${
+                          Math.abs(faltante) <= 0.01 ? 'text-emerald-400' : 'text-amber-400'
+                        }`}
+                      >
+                        {faltante > 0 ? `Falta ${fmtMonto(faltante)}` : faltante < 0 ? `Excede ${fmtMonto(Math.abs(faltante))}` : 'Exacto'}
+                      </span>
                     </div>
                     <div>
-                      <p class="text-label-sm uppercase text-slate-500">Total a pagar</p>
-                      <p class="tnum text-headline-sm font-bold text-slate-900">
-                        {fmtMonto(simulacion.total_cuotas)}
-                      </p>
-                    </div>
-                    <div>
-                      <p class="text-label-sm uppercase text-slate-500">Interés total</p>
-                      <p class="tnum text-headline-sm font-bold text-amber-600">
-                        {fmtMonto(simulacion.total_interes)}
-                      </p>
+                      <span class="block text-body-xs text-slate-400">Σ Pi:</span>
+                      <span
+                        class={`tnum font-bold ${
+                          Math.abs(sumaPi - 1) <= 0.0001 ? 'text-emerald-400' : 'text-amber-400'
+                        }`}
+                      >
+                        {sumaPi.toFixed(4)}
+                      </span>
                     </div>
                   </div>
+                </div>
 
-                  <div class="mt-4 max-h-72 overflow-y-auto rounded-md border border-slate-200">
-                    <DataTable
-                      columns={columnasSimulacion}
-                      rows={simulacion.periodos}
-                      getKey={(periodo) => periodo.periodo}
-                      caption="Proyección de cuotas"
+                {/* Barra de progreso visual */}
+                <div class="mt-4">
+                  <div class="h-2 w-full overflow-hidden rounded-full bg-slate-700">
+                    <div
+                      class={`h-full transition-all duration-300 ${
+                        Math.abs(faltante) <= 0.01 && Math.abs(sumaPi - 1) <= 0.0001 ? 'bg-emerald-400' : 'bg-amber-400'
+                      }`}
+                      style={{ width: `${coberturaPorcentaje}%` }}
                     />
                   </div>
-                  <p class="mt-2 text-body-sm text-slate-500">
-                    Tasa periódica aplicada: {fmtNumero(Number(simulacion.tasa_periodica) * 100)}%{' '}
-                    {periodicidad === 'MENSUAL' ? 'mensual' : 'quincenal'}.
+                </div>
+              </Card>
+
+              {/* Tabla de Fondos */}
+              <Card
+                title="Paso 3: Distribución Multifondo"
+                subtitle="Seleccione las bolsas de capital y defina el monto aportado por cada familiar"
+                action={
+                  <Button
+                    size="sm"
+                    icon="auto_awesome"
+                    variant="secondary"
+                    onClick={distribuirAutomatico}
+                    disabled={Object.keys(aportes).length === 0 || montoPrincipalNum <= 0}
+                  >
+                    Distribuir automático
+                  </Button>
+                }
+                padded={false}
+              >
+                {fondosLoading ? (
+                  <div class="flex justify-center py-12">
+                    <Spinner size={32} />
+                  </div>
+                ) : fondos.length === 0 ? (
+                  <EmptyState
+                    icon="savings"
+                    title="No hay fondos con saldo disponible"
+                    description="Cree o inyecte capital en una bolsa antes de otorgar un crédito."
+                  />
+                ) : (
+                  <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-body-md">
+                      <thead>
+                        <tr class="h-10 border-b border-slate-200 bg-slate-50/80">
+                          <th scope="col" class="w-12 px-4" />
+                          <th scope="col" class="px-4 text-left text-label-xs font-semibold uppercase text-slate-500">
+                            Fondo Familiar
+                          </th>
+                          <th scope="col" class="px-4 text-right text-label-xs font-semibold uppercase text-slate-500">
+                            Saldo Disponible
+                          </th>
+                          <th scope="col" class="px-4 text-left text-label-xs font-semibold uppercase text-slate-500">
+                            Monto Aportado (C$)
+                          </th>
+                          <th scope="col" class="px-4 text-left text-label-xs font-semibold uppercase text-slate-500">
+                            % Participación (Pi)
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100">
+                        {fondos.map((fondo) => {
+                          const activo = !!aportes[fondo.id];
+                          const aporte = aportes[fondo.id];
+                          const sobreSaldo =
+                            activo && Number(aporte.monto_aportado) > Number(fondo.saldo_disponible);
+                          return (
+                            <tr
+                              key={fondo.id}
+                              class={`transition-colors ${
+                                activo ? 'bg-emerald-50/30' : 'hover:bg-slate-50/50'
+                              }`}
+                            >
+                              <td class="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Usar fondo ${fondo.nombre}`}
+                                  checked={activo}
+                                  onChange={() => toggleFondo(fondo.id)}
+                                  class="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                              </td>
+                              <td class="px-4 py-3">
+                                <span class="block font-semibold text-slate-900">{fondo.nombre}</span>
+                                <span class="block text-body-xs text-slate-500">Titular: {fondo.familiar}</span>
+                              </td>
+                              <td class="tnum px-4 py-3 text-right font-medium text-slate-700">
+                                {fmtMonto(fondo.saldo_disponible)}
+                              </td>
+                              <td class="px-4 py-3">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  aria-label={`Monto aportado ${fondo.nombre}`}
+                                  disabled={!activo}
+                                  value={activo ? aporte.monto_aportado : ''}
+                                  onInput={(e) => handleMontoAportado(fondo.id, e.currentTarget.value)}
+                                  placeholder="0.00"
+                                  class={`tnum w-36 rounded-md border px-3 py-1.5 outline-none transition-colors focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 font-medium ${
+                                    sobreSaldo ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-300'
+                                  }`}
+                                />
+                              </td>
+                              <td class="px-4 py-3">
+                                <input
+                                  type="number"
+                                  step="0.0001"
+                                  min="0"
+                                  max="1"
+                                  aria-label={`% Pi ${fondo.nombre}`}
+                                  disabled={!activo}
+                                  value={activo ? aporte.porcentaje_pi : ''}
+                                  onInput={(e) => handlePiChange(fondo.id, e.currentTarget.value)}
+                                  placeholder="0.0000"
+                                  class="tnum w-32 rounded-md border border-slate-300 px-3 py-1.5 outline-none transition-colors focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 font-medium"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+
+              {/* Mensajes de validación de fondeo */}
+              {fondosConSobreSaldo.length > 0 && (
+                <div class="rounded-xl border border-red-200 bg-red-50 p-4 text-body-sm text-red-800 flex items-start gap-2">
+                  <Icon name="warning" size={18} class="shrink-0 mt-0.5 text-red-600" />
+                  <div>
+                    <span class="font-bold">Fondos con saldo insuficiente:</span> Uno o más fondos seleccionados
+                    exceden el dinero disponible en caja.
+                  </div>
+                </div>
+              )}
+
+              {/* Pie de navegación de página 3 */}
+              <div class="flex items-center justify-between pt-2">
+                <Button variant="secondary" icon="arrow_back" onClick={() => setPasoActual(2)}>
+                  Anterior: Condiciones
+                </Button>
+                <Button
+                  size="lg"
+                  icon="arrow_forward"
+                  disabled={!paso3Valido}
+                  onClick={() => setPasoActual(4)}
+                >
+                  Siguiente: Revisión y Desembolso
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* PÁGINA 4: REVISIÓN Y PROYECCIÓN */}
+          {/* ============================================================== */}
+          {pasoActual === 4 && (
+            <div class="space-y-6">
+              <Card
+                title="Paso 4: Expediente y Amortización Proyectada"
+                subtitle="Revise detalladamente la ficha del crédito antes de autorizar el desembolso"
+              >
+                {/* Cuadrícula de Resumen */}
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {/* Titular */}
+                  <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div class="flex items-center gap-2 mb-2 text-label-xs font-semibold uppercase text-slate-500">
+                      <Icon name="person" size={16} />
+                      Prestatario Titular
+                    </div>
+                    <p class="font-bold text-slate-900 text-body-lg">{clienteLabel || 'Sin cliente'}</p>
+                    {clienteSeleccionado && (
+                      <p class="mt-1 text-body-xs text-slate-600">
+                        {clienteSeleccionado.telefono ? `Tel: ${formatearTelefono(clienteSeleccionado.telefono)}` : 'Sin teléfono'} ·{' '}
+                        {clienteSeleccionado.direccion || 'Sin dirección'}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Términos */}
+                  <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div class="flex items-center gap-2 mb-2 text-label-xs font-semibold uppercase text-slate-500">
+                      <Icon name="tune" size={16} />
+                      Términos Financieros
+                    </div>
+                    <p class="font-bold text-slate-900 text-body-lg">
+                      {fmtMonto(montoPrincipalNum)}
+                    </p>
+                    <p class="mt-1 text-body-xs text-slate-600">
+                      Plazo: {esPlazoIndefinido ? 'Periodo Indefinido (cuota abierta)' : `${plazoMeses} meses`} ({periodicidad.toLowerCase()}) · Tasa: {(Number(tasaInteres) * 100).toFixed(2)}% m.
+                    </p>
+                    <p class="text-body-xs text-slate-500 mt-0.5">
+                      Desembolso: {fechaDesembolso || 'N/D'} · 1er Corte: {fechaPrimerCorte || 'N/D'}
+                    </p>
+                  </div>
+
+                  {/* Fondeo */}
+                  <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div class="flex items-center gap-2 mb-2 text-label-xs font-semibold uppercase text-slate-500">
+                      <Icon name="savings" size={16} />
+                      Multifondo Familiar
+                    </div>
+                    <div class="space-y-1">
+                      {filasAporte.map((f) => (
+                        <div key={f.fondo.id} class="flex justify-between text-body-xs">
+                          <span class="text-slate-600">{f.fondo.nombre}:</span>
+                          <span class="tnum font-semibold text-slate-900">
+                            {fmtMonto(f.aporte?.monto_aportado ?? 0)} ({(Number(f.aporte?.porcentaje_pi) * 100).toFixed(2)}%)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Proyección Financiera */}
+                {simulacion ? (
+                  <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 border-y border-slate-200 py-4">
+                      <div>
+                        <p class="text-label-xs uppercase text-slate-500">Cuota periódica</p>
+                        <p class="tnum text-headline-md font-bold text-slate-900">
+                          {fmtMonto(simulacion.periodos[0]?.cuota)}
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-label-xs uppercase text-slate-500">Total de pagos</p>
+                        <p class="tnum text-headline-md font-bold text-slate-900">
+                          {simulacion.total_periodos} cuotas
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-label-xs uppercase text-slate-500">Monto total devuelto</p>
+                        <p class="tnum text-headline-md font-bold text-slate-900">
+                          {fmtMonto(simulacion.total_cuotas)}
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-label-xs uppercase text-slate-500">Rendimiento (Interés)</p>
+                        <p class="tnum text-headline-md font-bold text-amber-600">
+                          {fmtMonto(simulacion.total_interes)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="mt-4 max-h-80 overflow-y-auto rounded-xl border border-slate-200">
+                      <DataTable
+                        columns={columnasSimulacion}
+                        rows={simulacion.periodos}
+                        getKey={(periodo) => periodo.periodo}
+                        caption="Proyección de cuotas"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div class="p-6 text-center text-slate-400">
+                    <p class="text-body-sm">Sin simulación disponible</p>
+                  </div>
+                )}
+
+                {/* Alertas y Validaciones */}
+                {validaciones.length > 0 && (
+                  <ul class="mt-6 space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    {validaciones.map((mensaje) => (
+                      <li key={mensaje} class="flex items-start gap-2 text-body-sm text-amber-800">
+                        <Icon name="warning" size={16} class="mt-0.5 shrink-0" />
+                        {mensaje}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {serverError && (
+                  <p class="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-body-sm text-red-700">
+                    <Icon name="warning" size={18} class="mt-0.5 shrink-0" />
+                    {serverError}
                   </p>
-                </>
-              ) : (
-                <EmptyState
-                  icon="query_stats"
-                  title="Sin simulación"
-                  description="Ingrese monto, tasa y plazo para ver la tabla de amortización."
-                />
-              )}
-            </Card>
+                )}
+              </Card>
 
-            <Card title="Resumen del desembolso">
-              <dl class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div>
-                  <dt class="text-body-sm text-slate-500">Monto principal</dt>
-                  <dd class="tnum text-headline-sm font-bold text-slate-900">
-                    {fmtMonto(montoPrincipalNum)}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-body-sm text-slate-500">Total aportado</dt>
-                  <dd
-                    class={`tnum text-headline-sm font-bold ${
-                      Math.abs(faltante) <= 0.01 ? 'text-green-600' : 'text-amber-600'
-                    }`}
-                  >
-                    {fmtMonto(totalAportado)}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-body-sm text-slate-500">Faltante/Excedente</dt>
-                  <dd
-                    class={`tnum text-headline-sm font-bold ${
-                      Math.abs(faltante) <= 0.01 ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {faltante >= 0 ? 'Falta ' : 'Excede '}
-                    {fmtMonto(Math.abs(faltante))}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-body-sm text-slate-500">Σ Pi</dt>
-                  <dd
-                    class={`tnum text-headline-sm font-bold ${
-                      Math.abs(sumaPi - 1) <= 0.0001 ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {sumaPi.toFixed(4)}
-                  </dd>
-                </div>
-              </dl>
-
-              {serverError && (
-                <p class="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-700">
-                  <Icon name="warning" size={18} class="mt-0.5 shrink-0" />
-                  {serverError}
-                </p>
-              )}
-
-              {validaciones.length > 0 && (
-                <ul class="mt-4 space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                  {validaciones.map((mensaje) => (
-                    <li key={mensaje} class="flex items-start gap-2 text-body-sm text-amber-800">
-                      <Icon name="warning" size={16} class="mt-0.5 shrink-0" />
-                      {mensaje}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div class="mt-5 flex justify-end">
+              {/* Pie de navegación y Confirmación */}
+              <div class="flex items-center justify-between pt-2">
+                <Button variant="secondary" icon="arrow_back" onClick={() => setPasoActual(3)}>
+                  Anterior: Fondeo
+                </Button>
                 <Button
                   size="lg"
                   icon="assignment_turned_in"
@@ -722,16 +1259,17 @@ export function PrestamoFormPage() {
                   Revisar y Crear Préstamo
                 </Button>
               </div>
-            </Card>
-          </div>
+            </div>
+          )}
         </div>
       )}
 
+      {/* Modal de confirmación final */}
       <Modal
         open={showConfirm}
         onClose={() => setShowConfirm(false)}
         title="Confirmar Desembolso"
-        subtitle="Se descontará el saldo de cada fondo de forma atómica"
+        subtitle="Se descontará el saldo de cada fondo de forma atómica y se emitirá el pagaré"
         icon="assignment_turned_in"
         size="lg"
         footer={
@@ -746,45 +1284,45 @@ export function PrestamoFormPage() {
         }
       >
         <div class="space-y-4">
-          <dl class="space-y-1.5 rounded-lg bg-slate-50 px-4 py-3">
+          <dl class="space-y-2 rounded-xl bg-slate-50 p-4">
             {[
-              ['Cliente', clienteLabel],
+              ['Cliente titular', clienteLabel],
               ['Monto principal', fmtMonto(montoPrincipalNum)],
-              ['Tasa / Plazo', `${Number(tasaInteres).toFixed(4)} · ${plazoMeses} meses`],
+              ['Tasa / Plazo', `${Number(tasaInteres).toFixed(4)} mensual · ${esPlazoIndefinido ? 'Periodo Indefinido' : `${plazoMeses} meses`}`],
               ['Periodicidad', periodicidad === 'MENSUAL' ? 'Mensual' : 'Quincenal'],
-              ['Desembolso', fechaDesembolso],
-              ['Primer corte', fechaPrimerCorte],
+              ['Fecha de desembolso', fechaDesembolso],
+              ['Fecha primer corte', fechaPrimerCorte],
             ].map(([label, valor]) => (
               <div key={label} class="flex justify-between gap-4 text-body-md">
                 <dt class="text-slate-600">{label}</dt>
-                <dd class="font-medium text-slate-900">{valor}</dd>
+                <dd class="font-semibold text-slate-900">{valor}</dd>
               </div>
             ))}
           </dl>
 
           <div>
-            <p class="mb-2 text-label-md text-slate-700">Débitos por fondo</p>
-            <div class="overflow-hidden rounded-md border border-slate-200">
+            <p class="mb-2 text-label-md font-semibold text-slate-800">Débitos por fondo de capital</p>
+            <div class="overflow-hidden rounded-xl border border-slate-200">
               <DataTable
                 columns={[
                   {
                     key: 'fondo',
                     header: 'Fondo',
-                    render: (fila) => <span class="font-medium text-slate-900">{fila.fondo.nombre}</span>,
+                    render: (fila) => <span class="font-semibold text-slate-900">{fila.fondo.nombre}</span>,
                   },
                   {
                     key: 'monto',
-                    header: 'Monto',
+                    header: 'Monto debitado',
                     align: 'right',
                     render: (fila) => (
-                      <span class="tnum font-semibold text-slate-900">
+                      <span class="tnum font-bold text-slate-900">
                         {fmtMonto(fila.aporte?.monto_aportado ?? 0)}
                       </span>
                     ),
                   },
                   {
                     key: 'pi',
-                    header: 'Pi',
+                    header: 'Participación (% Pi)',
                     align: 'right',
                     render: (fila) => (
                       <span class="tnum text-slate-700">

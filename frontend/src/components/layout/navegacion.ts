@@ -24,17 +24,18 @@ export const SECCIONES_NAV: SeccionNav[] = [
   {
     titulo: 'Operación',
     items: [
-      { path: '/', label: 'Panel de Control', icon: 'dashboard', roles: AMBOS },
-      { path: '/cobros', label: 'Créditos y Abonos', icon: 'credit_card', roles: AMBOS },
+      { path: '/', label: 'Inicio', icon: 'dashboard', roles: AMBOS },
+      { path: '/cobros', label: 'Abonos y Cobranza', icon: 'credit_card', roles: AMBOS },
       { path: '/prestamos/nuevo', label: 'Nuevo Préstamo', icon: 'add_circle', roles: AMBOS },
-      { path: '/clientes', label: 'Clientes', icon: 'person_add', roles: AMBOS, badge: '+ Alta' },
-      { path: '/fondos', label: 'Bolsas de Capital', icon: 'savings', roles: SOLO_ADMIN, badge: 'Fondeo' },
+      { path: '/clientes', label: 'Clientes', icon: 'person_add', roles: AMBOS },
+      { path: '/fondos', label: 'Bolsas de Capital', icon: 'savings', roles: SOLO_ADMIN },
     ],
   },
   {
     titulo: 'Reportes',
     items: [
       { path: '/reportes/estados-cuenta', label: 'Estados de Cuenta', icon: 'receipt_long', roles: SOLO_ADMIN },
+      { path: '/reportes/financiero', label: 'Informes Financieros', icon: 'analytics', roles: SOLO_ADMIN },
       { path: '/reportes/arqueo', label: 'Arqueo y Liquidación', icon: 'point_of_sale', roles: SOLO_ADMIN },
     ],
   },
@@ -54,9 +55,12 @@ export const seccionesVisibles = (rol: RolUsuario | undefined, secciones = SECCI
     .filter((seccion) => seccion.items.length > 0);
 
 export const TITULOS_RUTA: Record<string, string> = {
-  '/': 'Panel de Control',
+  '/': 'Inicio',
   '/clientes': 'Clientes',
   '/fondos': 'Bolsas de Capital',
   '/prestamos/nuevo': 'Nuevo Préstamo',
-  '/cobros': 'Créditos y Abonos',
+  '/cobros': 'Abonos y Cobranza',
+  '/reportes/estados-cuenta': 'Estados de Cuenta',
+  '/reportes/financiero': 'Informes Financieros',
+  '/reportes/bolsas': 'Informes Financieros',
 };

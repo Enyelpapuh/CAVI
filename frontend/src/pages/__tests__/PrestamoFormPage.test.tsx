@@ -24,8 +24,8 @@ import { clienteService, fondoService, prestamoService } from '../../services/ap
 import { PrestamoFormPage } from '../PrestamoFormPage';
 
 const CLIENTES = [
-  { id: 1, cedula: '001-111222-3', nombres: 'Juan', apellidos: 'Perez', activo: true },
-  { id: 2, cedula: '001-999888-7', nombres: 'Maria', apellidos: 'Lopez', activo: true },
+  { id: 1, cedula: '001-111222-3', nombres: 'Juan', apellidos: 'Perez', telefono: '8888-1111', direccion: 'Managua', activo: true },
+  { id: 2, cedula: '001-999888-7', nombres: 'Maria', apellidos: 'Lopez', telefono: '8888-2222', direccion: 'Tipitapa', activo: true },
 ];
 
 const FONDOS = [
@@ -55,31 +55,100 @@ beforeEach(() => {
   (prestamoService.simular as any).mockResolvedValue(SIMULACION);
 });
 
-describe('PrestamoFormPage', () => {
-  it('carga fondos disponibles y muestra tabla multifondo', async () => {
+describe('PrestamoFormPage (Formulario por Páginas)', () => {
+  it('muestra el navegador de páginas e inicia en el Paso 1 de Cliente', async () => {
     render(<PrestamoFormPage />);
+    expect(screen.getByText('1. Cliente')).toBeInTheDocument();
+    expect(screen.getByText('2. Condiciones')).toBeInTheDocument();
+    expect(screen.getByText('3. Fondeo')).toBeInTheDocument();
+    expect(screen.getByText('4. Revisión')).toBeInTheDocument();
+    expect(screen.getByText('Paso 1: Titular del Préstamo')).toBeInTheDocument();
+  });
+
+  it('permite navegar entre pasos mediante las pestañas superiores', async () => {
+    render(<PrestamoFormPage />);
+    await waitFor(() => expect(screen.getByText('1. Cliente')).toBeInTheDocument());
+
+    // Clic en pestaña Fondeo
+    fireEvent.click(screen.getByRole('button', { name: /3\. Fondeo/i }));
     await waitFor(() => {
+      expect(screen.getByText('Paso 3: Distribución Multifondo')).toBeInTheDocument();
       expect(screen.getByText('Fondo Principal')).toBeInTheDocument();
       expect(screen.getByText('Fondo Secundario')).toBeInTheDocument();
     });
+
+    // Clic en pestaña Condiciones
+    fireEvent.click(screen.getByRole('button', { name: /2\. Condiciones/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Paso 2: Condiciones del Préstamo')).toBeInTheDocument();
+    });
   });
 
-  it('deshabilita el botón hasta que las validaciones pasen', async () => {
+  it('valida la selección del cliente antes de permitir avanzar desde el Paso 1', async () => {
+    (clienteService.list as any).mockResolvedValue({ results: CLIENTES });
     render(<PrestamoFormPage />);
-    await waitFor(() => expect(screen.getByText('Fondo Principal')).toBeInTheDocument());
 
-    const btn = screen.getByText('Revisar y Crear Préstamo') as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
-    expect(screen.getByText(/Seleccione un cliente/)).toBeInTheDocument();
-    expect(screen.getByText(/El monto principal debe ser mayor a cero/)).toBeInTheDocument();
+    const btnSiguiente = screen.getByRole('button', { name: /Siguiente: Condiciones/i }) as HTMLButtonElement;
+    expect(btnSiguiente.disabled).toBe(true);
+
+    // Buscar y seleccionar cliente
+    fireEvent.focus(screen.getByLabelText('Cliente'));
+    fireEvent.input(screen.getByLabelText('Cliente'), { target: { value: 'Juan' } });
+    await waitFor(() => expect(screen.getByText('Juan Perez')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Juan Perez'));
+
+    // Al seleccionar, se habilita el botón y se muestra la ficha del cliente
+    await waitFor(() => {
+      expect(btnSiguiente.disabled).toBe(false);
+      expect(screen.getByText('Cambiar Titular')).toBeInTheDocument();
+    });
+
+    // Avanza a condiciones
+    fireEvent.click(btnSiguiente);
+    await waitFor(() => {
+      expect(screen.getByText('Paso 2: Condiciones del Préstamo')).toBeInTheDocument();
+    });
   });
 
-  it('distribuye automáticamente el monto entre fondos y calcula Pi', async () => {
+  it('en el Paso 2 cotiza la cuota en tiempo real y permite volver al Paso 1', async () => {
     render(<PrestamoFormPage />);
-    await waitFor(() => expect(screen.getByText('Fondo Principal')).toBeInTheDocument());
 
-    const montoInput = screen.getByLabelText(/Monto principal/) as HTMLInputElement;
-    fireEvent.input(montoInput, { target: { value: '50000' } });
+    // Navegar a Condiciones
+    fireEvent.click(screen.getByRole('button', { name: /2\. Condiciones/i }));
+    await waitFor(() => expect(screen.getByText('Paso 2: Condiciones del Préstamo')).toBeInTheDocument());
+
+    expect(screen.getByText('Sin simulación')).toBeInTheDocument();
+
+    // Ingresar monto
+    fireEvent.input(screen.getByLabelText(/Monto principal/), { target: { value: '50000' } });
+
+    await waitFor(() => {
+      expect(prestamoService.simular).toHaveBeenCalledWith(
+        expect.objectContaining({ monto_principal: '50000', plazo_meses: 12, periodicidad: 'MENSUAL' })
+      );
+    });
+
+    expect(screen.getByText('Cuota estimada por periodo').parentElement?.textContent).toContain('C$4,874.36');
+    expect(screen.getByText('Total a pagar:').parentElement?.textContent).toContain('C$60,000.00');
+    expect(screen.getByText('Interés total:').parentElement?.textContent).toContain('C$10,000.00');
+
+    // Botón anterior regresa a Cliente
+    fireEvent.click(screen.getByRole('button', { name: /Anterior: Cliente/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Paso 1: Titular del Préstamo')).toBeInTheDocument();
+    });
+  });
+
+  it('en el Paso 3 distribuye automáticamente el monto entre fondos y calcula Pi', async () => {
+    render(<PrestamoFormPage />);
+
+    // Navegar a Condiciones para ingresar monto
+    fireEvent.click(screen.getByRole('button', { name: /2\. Condiciones/i }));
+    fireEvent.input(screen.getByLabelText(/Monto principal/), { target: { value: '50000' } });
+
+    // Navegar a Fondeo
+    fireEvent.click(screen.getByRole('button', { name: /3\. Fondeo/i }));
+    await waitFor(() => expect(screen.getByText('Fondo Principal')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('Usar fondo Fondo Principal'));
     fireEvent.click(screen.getByLabelText('Usar fondo Fondo Secundario'));
@@ -99,37 +168,7 @@ describe('PrestamoFormPage', () => {
     expect(screen.getByText('1.0000')).toBeInTheDocument();
   });
 
-  it('requiere seleccionar cliente y elegir fecha', async () => {
-    render(<PrestamoFormPage />);
-    await waitFor(() => expect(screen.getByText('Fondo Principal')).toBeInTheDocument());
-    expect(screen.getByText('Indique la fecha de desembolso')).toBeInTheDocument();
-    expect(screen.getByText('Indique la fecha del primer corte')).toBeInTheDocument();
-  });
-
-  it('cotiza la cuota contra el backend sin persistir el préstamo', async () => {
-    (prestamoService.create as any).mockResolvedValue({});
-    render(<PrestamoFormPage />);
-    await waitFor(() => expect(screen.getByText('Fondo Principal')).toBeInTheDocument());
-
-    // Sin monto no hay simulación
-    expect(screen.getByText('Sin simulación')).toBeInTheDocument();
-
-    fireEvent.input(screen.getByLabelText(/Monto principal/), { target: { value: '50000' } });
-
-    await waitFor(() => {
-      expect(prestamoService.simular).toHaveBeenCalledWith(
-        expect.objectContaining({ monto_principal: '50000', plazo_meses: 12, periodicidad: 'MENSUAL' })
-      );
-    });
-    expect(screen.getByText('Cuota estimada').parentElement?.textContent).toContain('C$4,874.36');
-    expect(screen.getByText('Total a pagar').parentElement?.textContent).toContain('C$60,000.00');
-    expect(screen.getByText('Interés total').parentElement?.textContent).toContain('C$10,000.00');
-    expect(screen.getByText('Saldo insoluto')).toBeInTheDocument();
-    // Cotizar no crea nada
-    expect(prestamoService.create).not.toHaveBeenCalled();
-  });
-
-  it('crea el préstamo al confirmar con datos válidos', async () => {
+  it('completa el flujo por páginas y crea el préstamo al confirmar con datos válidos', async () => {
     (clienteService.list as any).mockResolvedValue({ results: CLIENTES });
     (prestamoService.create as any).mockResolvedValue({
       id: 1,
@@ -138,33 +177,42 @@ describe('PrestamoFormPage', () => {
     });
 
     render(<PrestamoFormPage />);
-    await waitFor(() => expect(screen.getByText('Fondo Principal')).toBeInTheDocument());
 
-    // Seleccionar cliente
+    // === PASO 1: SELECCIONAR CLIENTE ===
     fireEvent.focus(screen.getByLabelText('Cliente'));
     fireEvent.input(screen.getByLabelText('Cliente'), { target: { value: 'Juan' } });
     await waitFor(() => expect(screen.getByText('Juan Perez')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Juan Perez'));
 
-    // Condiciones
+    const btnSig1 = screen.getByRole('button', { name: /Siguiente: Condiciones/i });
+    fireEvent.click(btnSig1);
+
+    // === PASO 2: CONDICIONES ===
+    await waitFor(() => expect(screen.getByText('Paso 2: Condiciones del Préstamo')).toBeInTheDocument());
     fireEvent.input(screen.getByLabelText(/Monto principal/), { target: { value: '50000' } });
     fireEvent.input(screen.getByLabelText('Plazo (meses)'), { target: { value: '12' } });
     fireEvent.input(screen.getByLabelText('Fecha desembolso'), { target: { value: '2026-10-01' } });
     fireEvent.input(screen.getByLabelText('Fecha primer corte'), { target: { value: '2026-11-01' } });
 
-    // Fondos y distribución
+    const btnSig2 = screen.getByRole('button', { name: /Siguiente: Fondeo/i });
+    fireEvent.click(btnSig2);
+
+    // === PASO 3: FONDEO ===
+    await waitFor(() => expect(screen.getByText('Paso 3: Distribución Multifondo')).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText('Usar fondo Fondo Principal'));
     fireEvent.click(screen.getByLabelText('Usar fondo Fondo Secundario'));
     screen.getByText('Distribuir automático').click();
 
-    const btn = await waitFor(() => {
-      const b = screen.getByText('Revisar y Crear Préstamo') as HTMLButtonElement;
-      expect(b.disabled).toBe(false);
-      return b;
-    });
+    const btnSig3 = screen.getByRole('button', { name: /Siguiente: Revisión/i });
+    fireEvent.click(btnSig3);
 
-    fireEvent.click(btn);
+    // === PASO 4: REVISIÓN Y CONFIRMACIÓN ===
+    await waitFor(() => expect(screen.getByText('Paso 4: Expediente y Amortización Proyectada')).toBeInTheDocument());
+    const btnCrear = screen.getByRole('button', { name: /Revisar y Crear Préstamo/i });
+    expect(btnCrear).toBeInTheDocument();
+    fireEvent.click(btnCrear);
 
+    // Modal de confirmación
     await waitFor(() => expect(screen.getAllByText('Confirmar Desembolso').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar Desembolso' }));
 
@@ -177,8 +225,8 @@ describe('PrestamoFormPage', () => {
       expect(args.fondos_detalle[1].porcentaje_pi).toBe('0.5000');
     });
 
+    // Pantalla de éxito
     await waitFor(() => expect(screen.getByText(/Préstamo #1 creado exitosamente/)).toBeInTheDocument());
-    // El pagaré se puede descargar de inmediato para entregarlo firmado.
     expect(screen.getByTestId('pagare-1')).toBeInTheDocument();
 
     (prestamoService.pagarPagare as any).mockResolvedValue({

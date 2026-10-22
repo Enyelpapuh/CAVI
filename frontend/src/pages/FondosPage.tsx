@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { PageHeader } from '../components/layout/PageHeader';
 import {
@@ -15,16 +15,16 @@ import {
   type Columna,
 } from '../components/ui';
 import { fondoService } from '../services/api';
-import { fmtMonto, fmtCantidad, fmtPorcentaje, fmtFechaHora } from '../lib/format';
+import { fmtMonto, fmtCantidad, fmtFechaHora, iniciales } from '../lib/format';
 import type { Fondo, MovimientoFondo } from '../types';
 
 const POR_PAGINA = 20;
 
 const ESTILO_MOVIMIENTO: Record<string, string> = {
-  INYECCION: 'border-green-200 bg-green-50 text-green-600',
-  RETIRO: 'border-orange-200 bg-orange-50 text-orange-700',
-  DESEMBOLSO: 'border-blue-200 bg-blue-50 text-blue-700',
-  GANANCIA: 'border-amber-200 bg-amber-50 text-amber-700',
+  INYECCION: 'border-green-200 bg-green-50 text-green-700 font-semibold',
+  RETIRO: 'border-orange-200 bg-orange-50 text-orange-700 font-semibold',
+  DESEMBOLSO: 'border-blue-200 bg-blue-50 text-blue-700 font-semibold',
+  GANANCIA: 'border-amber-200 bg-amber-50 text-amber-700 font-semibold',
 };
 
 const SIGNO: Record<string, string> = {
@@ -41,10 +41,13 @@ type ModalState =
   | { type: 'retiro'; fondo: Fondo }
   | { type: 'movimientos'; fondo: Fondo };
 
+type FiltroLiquidez = 'TODOS' | 'CON_SALDO' | 'SIN_SALDO';
+
 export function FondosPage() {
   const [fondos, setFondos] = useState<Fondo[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filtroLiquidez, setFiltroLiquidez] = useState<FiltroLiquidez>('TODOS');
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -154,21 +157,37 @@ export function FondosPage() {
     setError('');
   };
 
-  const capitalEnCalle = fondos.reduce(
-    (total, fondo) => total + (Number(fondo.capital_colocado) || 0),
-    0
+  // Métricas Consolidadas Globales de Capital
+  const capitalEnCalle = useMemo(
+    () => fondos.reduce((total, fondo) => total + (Number(fondo.capital_colocado) || 0), 0),
+    [fondos]
   );
-  const saldoDisponible = fondos.reduce(
-    (total, fondo) => total + (Number(fondo.saldo_disponible) || 0),
-    0
+
+  const saldoDisponible = useMemo(
+    () => fondos.reduce((total, fondo) => total + (Number(fondo.saldo_disponible) || 0), 0),
+    [fondos]
   );
-  const ganancias = fondos.reduce(
-    (total, fondo) => total + (Number(fondo.ganancias_acumuladas) || 0),
-    0
+
+  const capitalTotalConsolidado = saldoDisponible + capitalEnCalle;
+  const ratioColocado =
+    capitalTotalConsolidado > 0 ? (capitalEnCalle / capitalTotalConsolidado) * 100 : 0;
+  const ratioDisponible = 100 - ratioColocado;
+
+  // Filtros de visualización
+  const fondosFiltrados = useMemo(() => {
+    return fondos.filter((f) => {
+      const saldo = Number(f.saldo_disponible) || 0;
+      if (filtroLiquidez === 'CON_SALDO') return saldo > 0;
+      if (filtroLiquidez === 'SIN_SALDO') return saldo <= 0;
+      return true;
+    });
+  }, [fondos, filtroLiquidez]);
+
+  const fondosConSaldo = useMemo(
+    () => fondos.filter((f) => (Number(f.saldo_disponible) || 0) > 0).length,
+    [fondos]
   );
-  const rentabilidad = fondos.length
-    ? fondos.reduce((total, fondo) => total + (Number(fondo.rentabilidad) || 0), 0) / fondos.length
-    : 0;
+  const fondosSinSaldo = fondos.length - fondosConSaldo;
 
   const columnasMovimiento: Columna<MovimientoFondo>[] = [
     {
@@ -192,7 +211,7 @@ export function FondosPage() {
       align: 'right',
       render: (mov) => (
         <span
-          class={`tnum font-semibold ${
+          class={`tnum font-bold ${
             mov.tipo === 'INYECCION' || mov.tipo === 'GANANCIA' ? 'text-green-600' : 'text-red-600'
           }`}
         >
@@ -219,7 +238,7 @@ export function FondosPage() {
       render: (mov) => (
         <div class="min-w-0">
           <p class="tnum text-slate-700">{fmtFechaHora(mov.creado_en)}</p>
-          {mov.descripcion && <p class="truncate text-body-sm text-slate-500">{mov.descripcion}</p>}
+          {mov.descripcion && <p class="truncate text-body-xs text-slate-500">{mov.descripcion}</p>}
         </div>
       ),
     },
@@ -229,10 +248,10 @@ export function FondosPage() {
   const paginasMovimientos = Math.max(1, Math.ceil(movTotal / POR_PAGINA));
 
   return (
-    <Layout titulo="Fondos">
+    <Layout titulo="Bolsas de Capital">
       <PageHeader
-        titulo="Bolsas de Fondo"
-        descripcion={`${fmtCantidad(fondos.length)} fondo${fondos.length === 1 ? '' : 's'} familiar${fondos.length === 1 ? '' : 'es'}`}
+        titulo="Bolsas de Capital"
+        descripcion={`Control de liquidez en caja y capital regado por fondo familiar (${fmtCantidad(fondos.length)} bolsa${fondos.length === 1 ? '' : 's'})`}
         actions={
           <Button
             icon="add"
@@ -246,124 +265,236 @@ export function FondosPage() {
         }
       />
 
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiTile label="En Calle" value={fmtMonto(capitalEnCalle)} icon="point_of_sale" tono="indigo" pie="Capital colocado" />
-        <KpiTile label="Disponible" value={fmtMonto(saldoDisponible)} icon="savings" tono="esmeralda" pie="Para desembolsos" />
-        <KpiTile label="Ganancias" value={fmtMonto(ganancias)} icon="trending_up" tono="ambar" pie="Acumuladas 50%" />
-        <KpiTile label="Rentabilidad" value={fmtPorcentaje(rentabilidad)} icon="query_stats" tono="neutro" pie="Promedio simple" />
+      {/* Resumen Consolidado Global de Capital */}
+      <div class="space-y-3">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <KpiTile
+            label="Dinero Disponible"
+            value={fmtMonto(saldoDisponible)}
+            icon="savings"
+            tono="esmeralda"
+            pie="Líquido en caja para prestar"
+          />
+          <KpiTile
+            label="Capital Regado"
+            value={fmtMonto(capitalEnCalle)}
+            icon="point_of_sale"
+            tono="indigo"
+            pie="En calle en créditos activos"
+          />
+          <KpiTile
+            label="Capital Total"
+            value={fmtMonto(capitalTotalConsolidado)}
+            icon="account_balance"
+            tono="neutro"
+            pie="Patrimonio global administrado"
+          />
+        </div>
+
+        {/* Barra de Distribución de Liquidez vs. Colocación */}
+        {capitalTotalConsolidado > 0 && (
+          <div class="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
+            <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between text-body-xs">
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" />
+                <span class="font-medium text-slate-700">
+                  Líquido en caja: <span class="font-bold text-slate-900">{fmtMonto(saldoDisponible)}</span> ({ratioDisponible.toFixed(1)}%)
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-indigo-500 shrink-0" />
+                <span class="font-medium text-slate-700">
+                  Capital regado en calle: <span class="font-bold text-slate-900">{fmtMonto(capitalEnCalle)}</span> ({ratioColocado.toFixed(1)}%)
+                </span>
+              </div>
+            </div>
+            <div class="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-slate-100 flex">
+              <div
+                class="bg-indigo-500 transition-all duration-300"
+                style={{ width: `${ratioColocado}%` }}
+                title={`Capital Regado: ${fmtMonto(capitalEnCalle)}`}
+              />
+              <div
+                class="bg-emerald-500 transition-all duration-300"
+                style={{ width: `${ratioDisponible}%` }}
+                title={`Dinero Disponible: ${fmtMonto(saldoDisponible)}`}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      <div class="relative mt-4 sm:max-w-md">
-        <Icon
-          name="search"
-          size={20}
-          class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-        />
-        <input
-          type="search"
-          value={search}
-          onInput={(e) => setSearch((e.currentTarget as HTMLInputElement).value)}
-          placeholder="Buscar por nombre o familiar"
-          aria-label="Buscar fondos"
-          class="w-full rounded-full border border-slate-200 bg-white py-2 pl-10 pr-4 text-body-md text-slate-800 outline-none transition-shadow focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
-        />
+      {/* Buscador y Filtros de Liquidez */}
+      <div class="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="relative flex-1 sm:max-w-md">
+          <Icon
+            name="search"
+            size={20}
+            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            type="search"
+            value={search}
+            onInput={(e) => setSearch((e.currentTarget as HTMLInputElement).value)}
+            placeholder="Buscar por nombre o familiar..."
+            aria-label="Buscar fondos"
+            class="w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-4 text-body-md text-slate-800 outline-none transition-shadow focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 shadow-sm"
+          />
+        </div>
+
+        <div class="flex items-center gap-1.5 overflow-x-auto">
+          {(['TODOS', 'CON_SALDO', 'SIN_SALDO'] as const).map((filtro) => {
+            const activo = filtroLiquidez === filtro;
+            return (
+              <button
+                key={filtro}
+                type="button"
+                onClick={() => setFiltroLiquidez(filtro)}
+                class={`rounded-lg px-3 py-1.5 text-body-xs font-semibold transition-colors ${
+                  activo
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {filtro === 'TODOS'
+                  ? `Todas (${fondos.length})`
+                  : filtro === 'CON_SALDO'
+                  ? `Con Saldo (${fondosConSaldo})`
+                  : `Sin Saldo (${fondosSinSaldo})`}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
+      {/* Cuadrícula de Tarjetas de Cada Bolsa Familiar */}
       {loading ? (
         <div class="flex justify-center py-16">
           <Spinner size={40} />
         </div>
-      ) : fondos.length === 0 ? (
+      ) : fondosFiltrados.length === 0 ? (
         <EmptyState
           icon="savings"
-          title="No se encontraron fondos"
-          description="Cree la primera bolsa familiar para empezar a colocar créditos."
+          title={search || filtroLiquidez !== 'TODOS' ? 'Sin resultados para este filtro' : 'No se encontraron fondos'}
+          description={
+            search || filtroLiquidez !== 'TODOS'
+              ? 'Pruebe cambiando el término de búsqueda o seleccionando otro filtro de liquidez.'
+              : 'Cree la primera bolsa familiar para empezar a colocar créditos.'
+          }
         />
       ) : (
         <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {fondos.map((fondo) => (
-            <Card key={fondo.id} padded={false} class="flex flex-col overflow-hidden">
-              <div class="flex items-start justify-between gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 px-5 py-4">
-                <div class="min-w-0">
-                  <h2 class="truncate text-headline-sm text-white">{fondo.nombre}</h2>
-                  <p class="truncate text-body-sm text-indigo-200">Familiar: {fondo.familiar}</p>
+          {fondosFiltrados.map((fondo) => {
+            const capitalTotalFondo =
+              (Number(fondo.saldo_disponible) || 0) + (Number(fondo.capital_colocado) || 0);
+            return (
+              <Card key={fondo.id} padded={false} class="flex flex-col overflow-hidden border border-slate-200 hover:shadow-md transition-shadow">
+                {/* Cabecera de la Bolsa */}
+                <div class="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-4">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white font-bold text-label-md">
+                      {iniciales(fondo.nombre)}
+                    </span>
+                    <div class="min-w-0">
+                      <h3 class="truncate text-headline-sm font-bold text-slate-900">{fondo.nombre}</h3>
+                      <p class="truncate text-body-xs text-slate-500">
+                        Titular: <span class="font-medium text-slate-700">{fondo.familiar}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    class={`shrink-0 rounded-full px-2.5 py-0.5 text-label-xs font-semibold uppercase ${
+                      fondo.activo
+                        ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border border-slate-200 bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {fondo.activo ? 'Activo' : 'Inactivo'}
+                  </span>
                 </div>
-                <span
-                  class={`shrink-0 rounded-full px-2.5 py-0.5 text-label-xs uppercase ${
-                    fondo.activo ? 'bg-white/20 text-white' : 'bg-slate-900/30 text-slate-200'
-                  }`}
-                >
-                  {fondo.activo ? 'Activo' : 'Inactivo'}
-                </span>
-              </div>
 
-              <div class="flex-1 space-y-4 px-5 py-4">
-                <div>
-                  <p class="text-label-sm uppercase text-slate-500">Saldo disponible</p>
-                  <p class="tnum text-headline-lg font-extrabold text-slate-900">
-                    {fmtMonto(fondo.saldo_disponible)}
-                  </p>
+                {/* Cuerpo: Métricas Clave de Liquidez y Capital */}
+                <div class="flex-1 space-y-4 px-5 py-4">
+                  {/* Destacado: Dinero Disponible */}
+                  <div class="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3.5">
+                    <span class="block text-label-xs font-semibold uppercase tracking-wider text-emerald-800">
+                      Dinero Disponible (en caja)
+                    </span>
+                    <p class="tnum mt-1 text-headline-lg font-black text-emerald-700">
+                      {fmtMonto(fondo.saldo_disponible)}
+                    </p>
+                    <span class="text-body-xs text-emerald-600/80">Líquido disponible para desembolsos</span>
+                  </div>
+
+                  {/* Resumen Homogéneo de Capital */}
+                  <dl class="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-body-xs border border-slate-100">
+                    <div>
+                      <dt class="text-slate-500 font-medium truncate">Capital Regado</dt>
+                      <dd class="tnum font-bold text-slate-900 mt-0.5">
+                        {fmtMonto(fondo.capital_colocado ?? 0)}
+                      </dd>
+                      <span class="text-[10px] text-slate-400">En calle</span>
+                    </div>
+                    <div>
+                      <dt class="text-slate-500 font-medium truncate">Capital Total</dt>
+                      <dd class="tnum font-bold text-slate-900 mt-0.5">
+                        {fmtMonto(capitalTotalFondo)}
+                      </dd>
+                      <span class="text-[10px] text-slate-400">Patrimonio</span>
+                    </div>
+                    <div>
+                      <dt class="text-slate-500 font-medium truncate">Capital Inicial</dt>
+                      <dd class="tnum font-bold text-slate-700 mt-0.5">
+                        {fmtMonto(fondo.capital_inicial)}
+                      </dd>
+                      <span class="text-[10px] text-slate-400">Registrado</span>
+                    </div>
+                  </dl>
                 </div>
-                <dl class="grid grid-cols-2 gap-3 text-body-sm">
-                  <div>
-                    <dt class="text-slate-500">Capital inicial</dt>
-                    <dd class="tnum font-medium text-slate-900">{fmtMonto(fondo.capital_inicial)}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-slate-500">Capital colocado</dt>
-                    <dd class="tnum font-medium text-slate-900">{fmtMonto(fondo.capital_colocado ?? 0)}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-slate-500">Ganancias acumuladas</dt>
-                    <dd class="tnum font-medium text-green-600">{fmtMonto(fondo.ganancias_acumuladas)}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-slate-500">Rentabilidad</dt>
-                    <dd class="tnum font-medium text-slate-900">{fmtPorcentaje(fondo.rentabilidad ?? 0)}</dd>
-                  </div>
-                </dl>
-              </div>
 
-              <div class="flex items-center gap-2 border-t border-slate-200 px-5 py-3">
-                <Button
-                  size="sm"
-                  icon="add"
-                  class="flex-1"
-                  onClick={() => {
-                    setError('');
-                    setMontoForm({ monto: '', descripcion: '' });
-                    setModal({ type: 'inyeccion', fondo });
-                  }}
-                >
-                  Inyección
-                </Button>
-                <Button
-                  size="sm"
-                  icon="upload"
-                  variant="secondary"
-                  class="flex-1"
-                  onClick={() => {
-                    setError('');
-                    setMontoForm({ monto: '', descripcion: '' });
-                    setModal({ type: 'retiro', fondo });
-                  }}
-                >
-                  Retiro
-                </Button>
-                <Button
-                  size="sm"
-                  icon="receipt_long"
-                  variant="ghost"
-                  onClick={() => openMovimientos(fondo)}
-                >
-                  Movimientos
-                </Button>
-              </div>
-            </Card>
-          ))}
+                {/* Acciones Operativas de la Bolsa */}
+                <div class="flex items-center gap-2 border-t border-slate-100 bg-slate-50/40 px-5 py-3">
+                  <Button
+                    size="sm"
+                    icon="add"
+                    class="flex-1"
+                    onClick={() => {
+                      setError('');
+                      setMontoForm({ monto: '', descripcion: '' });
+                      setModal({ type: 'inyeccion', fondo });
+                    }}
+                  >
+                    Inyección
+                  </Button>
+                  <Button
+                    size="sm"
+                    icon="upload"
+                    variant="secondary"
+                    class="flex-1"
+                    onClick={() => {
+                      setError('');
+                      setMontoForm({ monto: '', descripcion: '' });
+                      setModal({ type: 'retiro', fondo });
+                    }}
+                  >
+                    Retiro
+                  </Button>
+                  <Button
+                    size="sm"
+                    icon="receipt_long"
+                    variant="ghost"
+                    onClick={() => openMovimientos(fondo)}
+                  >
+                    Movimientos
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 
+      {/* Modal: Nuevo Fondo */}
       <Modal
         open={modal.type === 'create'}
         onClose={cerrar}
@@ -387,12 +518,14 @@ export function FondosPage() {
             value={createForm.nombre}
             onInput={(valor) => setCreateForm({ ...createForm, nombre: valor })}
             required
+            placeholder="Ej: Fondo Principal"
           />
           <Input
             label="Familiar"
             value={createForm.familiar}
             onInput={(valor) => setCreateForm({ ...createForm, familiar: valor })}
             required
+            placeholder="Ej: Familia Morales"
           />
           <Input
             label="Capital inicial"
@@ -403,10 +536,10 @@ export function FondosPage() {
             min="0.01"
             prefix="C$"
             required
-            hint="El fondo inicia con este capital disponible."
+            hint="El fondo inicia con este capital disponible en caja."
           />
           {error && (
-            <p class="flex items-start gap-2 text-body-sm text-red-600">
+            <p class="flex items-start gap-2 text-body-sm text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">
               <Icon name="warning" size={16} class="mt-0.5 shrink-0" />
               {error}
             </p>
@@ -414,6 +547,7 @@ export function FondosPage() {
         </form>
       </Modal>
 
+      {/* Modal: Inyección / Retiro de Capital */}
       <Modal
         open={modal.type === 'inyeccion' || modal.type === 'retiro'}
         onClose={cerrar}
@@ -438,9 +572,9 @@ export function FondosPage() {
       >
         {fondoActivo && (
           <form id="form-movimiento" onSubmit={handleMovimiento} class="space-y-4">
-            <div class="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
-              <span class="text-body-md text-slate-600">Saldo disponible</span>
-              <span class="tnum font-bold text-slate-900">{fmtMonto(fondoActivo.saldo_disponible)}</span>
+            <div class="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 border border-slate-200">
+              <span class="text-body-md text-slate-600 font-medium">Saldo disponible actual</span>
+              <span class="tnum font-bold text-slate-900 text-body-lg">{fmtMonto(fondoActivo.saldo_disponible)}</span>
             </div>
             <Input
               label="Monto"
@@ -464,7 +598,7 @@ export function FondosPage() {
               placeholder={modal.type === 'inyeccion' ? 'Inyección de capital' : 'Retiro de capital'}
             />
             {error && (
-              <p class="flex items-start gap-2 text-body-sm text-red-600">
+              <p class="flex items-start gap-2 text-body-sm text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">
                 <Icon name="warning" size={16} class="mt-0.5 shrink-0" />
                 {error}
               </p>
@@ -473,10 +607,11 @@ export function FondosPage() {
         )}
       </Modal>
 
+      {/* Modal: Historial de Movimientos */}
       <Modal
         open={modal.type === 'movimientos'}
         onClose={cerrar}
-        title="Movimientos"
+        title="Historial de Movimientos"
         subtitle={fondoActivo ? `${fondoActivo.nombre} · ${fondoActivo.familiar}` : undefined}
         icon="receipt_long"
         size="xl"

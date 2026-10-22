@@ -2,22 +2,13 @@ import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PagoRecibo } from '../components/PagoRecibo';
-import { BotonPagare } from '../components/BotonPagare';
-import { Card, KpiTile, Button, Icon, Input, Select, Modal, Spinner, EmptyState, StatusBadge } from '../components/ui';
+import { KpiTile, Button, Icon, Input, Select, Modal, Spinner, EmptyState, StatusBadge } from '../components/ui';
 import { prestamoService, dashboardService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { fmtMonto, fmtCantidad, fmtPorcentaje, fmtFecha, fmtFechaHora, iniciales } from '../lib/format';
+import { fmtMonto, fmtCantidad, fmtPorcentaje, fmtFecha, iniciales } from '../lib/format';
 import type { CarteraFila, CajaCobrador, AgendaCobrador, PreviewPago, Pago } from '../types';
 
-type Pestana = 'agenda' | 'caja';
-type Filtro = 'TODOS' | 'EN_MORA' | 'EN_GRACIA' | 'AL_DIA';
-
-const FILTROS: { valor: Filtro; label: string }[] = [
-  { valor: 'TODOS', label: 'Todos' },
-  { valor: 'EN_MORA', label: 'En Mora' },
-  { valor: 'EN_GRACIA', label: 'En Gracia' },
-  { valor: 'AL_DIA', label: 'Al Dia' },
-];
+type Filtro = 'TODOS' | 'EN_FECHA' | 'PASADOS';
 
 const METODOS = [
   { value: 'EFECTIVO', label: 'Efectivo' },
@@ -44,8 +35,8 @@ function Prelacion({ preview }: { preview: PreviewPago }) {
     ['Capital', preview.aplicacion_capital],
   ];
   return (
-    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <p class="text-label-sm uppercase text-slate-500">Imputación Art. 3180</p>
+    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <p class="text-label-sm uppercase font-bold text-slate-500">Imputación Art. 3180</p>
       <dl class="mt-2 space-y-1.5">
         {filas.map(([label, valor]) => (
           <div key={label} class="flex items-center justify-between text-body-md">
@@ -82,7 +73,6 @@ export function CobrosPage() {
   const { user } = useAuth();
   const esCobranza = user?.rol === 'COBRANZA';
 
-  const [pestana, setPestana] = useState<Pestana>('agenda');
   const [agenda, setAgenda] = useState<AgendaCobrador | null>(null);
   const [caja, setCaja] = useState<CajaCobrador | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,7 +90,6 @@ export function CobrosPage() {
   const [fechaPago, setFechaPago] = useState(() => new Date().toISOString().slice(0, 10));
   const [preview, setPreview] = useState<PreviewPago | null>(null);
   const [previewCargando, setPreviewCargando] = useState(false);
-  const [errorPagare, setErrorPagare] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorCobro, setErrorCobro] = useState('');
   const [pago, setPago] = useState<Pago | null>(null);
@@ -126,10 +115,32 @@ export function CobrosPage() {
     cargar();
   }, [cargar]);
 
+  // Conteo de Pasados (en mora o con atraso) vs En Fecha
+  const totalPasados = useMemo(() => {
+    return (agenda?.filas ?? []).filter(
+      (f) => f.estado_efectivo === 'EN_MORA' || f.dias_atraso > 0 || Number(f.mora_pendiente) > 0
+    ).length;
+  }, [agenda]);
+
+  const totalEnFecha = useMemo(() => {
+    return (agenda?.filas ?? []).filter(
+      (f) => !(f.estado_efectivo === 'EN_MORA' || f.dias_atraso > 0 || Number(f.mora_pendiente) > 0)
+    ).length;
+  }, [agenda]);
+
   const filas = useMemo(() => {
     const lista = agenda?.filas ?? [];
-    if (filtro === 'TODOS') return lista;
-    return lista.filter((fila) => fila.estado_efectivo === filtro);
+    if (filtro === 'EN_FECHA') {
+      return lista.filter(
+        (f) => !(f.estado_efectivo === 'EN_MORA' || f.dias_atraso > 0 || Number(f.mora_pendiente) > 0)
+      );
+    }
+    if (filtro === 'PASADOS') {
+      return lista.filter(
+        (f) => f.estado_efectivo === 'EN_MORA' || f.dias_atraso > 0 || Number(f.mora_pendiente) > 0
+      );
+    }
+    return lista;
   }, [agenda, filtro]);
 
   const montoNum = Number(monto) || 0;
@@ -151,39 +162,33 @@ export function CobrosPage() {
     return errores;
   }, [montoNum, minimoCiclo, fechaPago, metodoPago, referencia]);
 
-  /** Consulta el preview de prelación mientras el cobrador escribe el monto. */
+  // Actualiza preview legal con debounce al cambiar monto
   useEffect(() => {
     if (!seleccion || montoNum <= 0) {
       setPreview(null);
       return;
     }
-    let vigente = true;
+    let cancelado = false;
     setPreviewCargando(true);
-    const temporizador = setTimeout(() => {
-      prestamoService
-        .previewPago(seleccion.id, monto)
-        .then((data) => {
-          if (vigente) {
-            setPreview(data);
-            setErrorCobro('');
-          }
-        })
-        .catch(() => {
-          if (vigente) setPreview(null);
-        })
-        .finally(() => {
-          if (vigente) setPreviewCargando(false);
-        });
-    }, 350);
+    const timeout = setTimeout(async () => {
+      try {
+        const data = await prestamoService.previewPago(seleccion.id, monto);
+        if (!cancelado) setPreview(data);
+      } catch {
+        if (!cancelado) setPreview(null);
+      } finally {
+        if (!cancelado) setPreviewCargando(false);
+      }
+    }, 250);
     return () => {
-      vigente = false;
-      clearTimeout(temporizador);
+      cancelado = true;
+      clearTimeout(timeout);
     };
   }, [seleccion, monto, montoNum]);
 
   const abrirCobro = (fila: CarteraFila) => {
     setSeleccion(fila);
-    setMonto('');
+    setMonto(String(Number(fila.cuota) || ''));
     setMetodoPago('EFECTIVO');
     setBanco('BAC Credomatic');
     setReferencia('');
@@ -231,11 +236,17 @@ export function CobrosPage() {
 
   const resumen = agenda?.resumen;
 
+  const FILTROS: { valor: Filtro; label: string; count: number; badgeCls: string }[] = [
+    { valor: 'TODOS', label: 'Todos', count: agenda?.filas.length ?? 0, badgeCls: 'bg-slate-200 text-slate-700' },
+    { valor: 'EN_FECHA', label: 'En Fecha', count: totalEnFecha, badgeCls: 'bg-emerald-100 text-emerald-800' },
+    { valor: 'PASADOS', label: 'Pasados', count: totalPasados, badgeCls: 'bg-rose-100 text-rose-800' },
+  ];
+
   return (
-    <Layout titulo="Cobranza">
+    <Layout titulo="Abonos y Cobranza">
       <PageHeader
-        titulo="Gestion de Cobranza"
-        descripcion="El abono se imputa primero a mora, luego interes corriente y despues capital (Art. 3180 C.C.)"
+        titulo="Abonos y Cobranza"
+        descripcion="Agenda de recaudación y consulta de créditos en fecha vs. pasados (Art. 3180 C.C.)"
         actions={
           <Button variant="secondary" icon="sync" onClick={cargar} loading={loading}>
             Actualizar
@@ -250,34 +261,39 @@ export function CobrosPage() {
         </div>
       )}
 
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Indicadores Clave de Cobranza (Bloques Compactos) */}
+      <div class="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4 mb-2">
         <KpiTile
           label="Cobros Hoy"
           value={fmtMonto(caja?.total_recaudado)}
           icon="payments"
           tono="esmeralda"
-          pie={`${fmtCantidad(caja?.recibos_emitidos)} recibos`}
+          compact
+          pie={`${fmtCantidad(caja?.recibos_emitidos)} recibos emitidos`}
         />
         <KpiTile
           label="Por Cobrar"
           value={fmtMonto(resumen?.saldo_total)}
           icon="account_balance_wallet"
           tono="ambar"
-          pie={`${fmtCantidad(resumen?.cantidad)} creditos`}
+          compact
+          pie={`${fmtCantidad(resumen?.cantidad)} creditos en total`}
         />
         <KpiTile
-          label="En Mora"
-          value={fmtCantidad(resumen?.en_mora)}
+          label="En Fecha"
+          value={fmtCantidad(totalEnFecha)}
+          icon="task_alt"
+          tono="esmeralda"
+          compact
+          pie="Al corriente / al día"
+        />
+        <KpiTile
+          label="Pasados"
+          value={fmtCantidad(totalPasados)}
           icon="priority_high"
           tono="rosa"
-          pie={`${fmtPorcentaje(resumen?.porcentaje_sano, 0)} sano`}
-        />
-        <KpiTile
-          label="En Gracia"
-          value={fmtCantidad(resumen?.en_gracia)}
-          icon="schedule"
-          tono="neutro"
-          pie="4 dias de gracia"
+          compact
+          pie="Vencidos / en mora"
         />
       </div>
 
@@ -288,200 +304,151 @@ export function CobrosPage() {
         </p>
       )}
 
-      {errorPagare && (
-        <p class="mt-3 text-body-sm text-red-700" role="alert">
-          {errorPagare}
-        </p>
-      )}
-
-      <div class="mt-6 flex gap-1 border-b border-slate-200">
-        {(
-          [
-            { valor: 'agenda', label: 'Agenda', icono: 'point_of_sale' },
-            { valor: 'caja', label: 'Mi Caja', icono: 'account_balance_wallet' },
-          ] as const
-        ).map((tab) => (
-          <button
-            key={tab.valor}
-            type="button"
-            onClick={() => setPestana(tab.valor)}
-            aria-current={pestana === tab.valor}
-            class={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-label-md font-medium transition-colors ${
-              pestana === tab.valor
-                ? 'border-green-600 text-green-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Icon name={tab.icono} size={18} />
-            {tab.label}
-          </button>
-        ))}
+      {/* Barra de Filtros: En Fecha vs Pasados y Buscador */}
+      <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex flex-wrap gap-2">
+          {FILTROS.map((item) => (
+            <button
+              key={item.valor}
+              type="button"
+              onClick={() => setFiltro(item.valor)}
+              class={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-label-md font-semibold transition-colors ${
+                filtro === item.valor
+                  ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              <span>{item.label}</span>
+              <span
+                class={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                  filtro === item.valor ? 'bg-white/20 text-white' : item.badgeCls
+                }`}
+              >
+                {item.count}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div class="relative sm:w-80">
+          <Icon
+            name="search"
+            size={20}
+            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            type="search"
+            value={busqueda}
+            onInput={(e) => setBusqueda((e.target as HTMLInputElement).value)}
+            placeholder="Buscar por cliente, cédula o dirección"
+            aria-label="Buscar en agenda"
+            class="w-full rounded-full border border-slate-200 bg-white py-2 pl-10 pr-4 text-body-md text-slate-800 outline-none transition-shadow focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+          />
+        </div>
       </div>
 
-      {pestana === 'agenda' ? (
-        <>
-          <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div class="flex flex-wrap gap-2">
-              {FILTROS.map((item) => (
-                <button
-                  key={item.valor}
-                  type="button"
-                  onClick={() => setFiltro(item.valor)}
-                  class={`rounded-full border px-3 py-1.5 text-label-md font-medium transition-colors ${
-                    filtro === item.valor
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <div class="relative sm:w-72">
-              <Icon
-                name="search"
-                size={20}
-                class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                type="search"
-                value={busqueda}
-                onInput={(e) => setBusqueda((e.target as HTMLInputElement).value)}
-                placeholder="Buscar por cliente o direccion"
-                aria-label="Buscar en agenda"
-                class="w-full rounded-full border border-slate-200 bg-white py-2 pl-10 pr-4 text-body-md text-slate-800 outline-none transition-shadow focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
-              />
-            </div>
+      {/* Agenda de Abonos (Única sección principal) */}
+      <div class="mt-4">
+        {loading && !agenda ? (
+          <div class="flex justify-center py-16">
+            <Spinner size={40} />
           </div>
-
-          <div class="mt-4">
-            {loading && !agenda ? (
-              <div class="flex justify-center py-16">
-                <Spinner size={40} />
-              </div>
-            ) : filas.length === 0 ? (
-              <EmptyState
-                icon="task_alt"
-                title="Sin creditos para cobrar"
-                description="No hay creditos que coincidan con el filtro o la busqueda."
-              />
-            ) : (
-              <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {filas.map((fila) => (
-                  <li key={fila.id} class="rounded-lg border border-slate-200 bg-white p-4 shadow-card">
-                    <div class="flex items-start gap-3">
-                      <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-label-md font-bold text-slate-600">
-                        {iniciales(fila.cliente_nombre)}
-                      </span>
-                      <div class="min-w-0 flex-1">
-                        <p class="truncate text-body-md font-semibold text-slate-900">{fila.cliente_nombre}</p>
-                        <p class="tnum text-body-sm text-slate-500">#{fila.id}</p>
-                      </div>
-                      <StatusBadge estado={fila.estado} diasAtraso={fila.dias_atraso} />
+        ) : filas.length === 0 ? (
+          <EmptyState
+            icon="task_alt"
+            title="Sin creditos para cobrar"
+            description="No hay creditos que coincidan con el filtro seleccionado o la busqueda."
+          />
+        ) : (
+          <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {filas.map((fila) => (
+              <li
+                key={fila.id}
+                class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300 transition-colors flex flex-col justify-between"
+              >
+                <div>
+                  <div class="flex items-start gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-label-md font-bold text-white shadow-sm">
+                      {iniciales(fila.cliente_nombre)}
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => abrirCobro(fila)}
+                        class="truncate text-left text-body-md font-bold text-slate-900 hover:text-green-700 hover:underline block w-full"
+                      >
+                        {fila.cliente_nombre}
+                      </button>
+                      <p class="tnum text-body-sm text-slate-500 font-mono">Crédito #{fila.id}</p>
                     </div>
+                    <StatusBadge estado={fila.estado} diasAtraso={fila.dias_atraso} />
+                  </div>
 
-                    <dl class="mt-3 grid grid-cols-2 gap-2 text-body-sm">
-                      <div>
-                        <dt class="text-slate-500">Deuda</dt>
-                        <dd class="tnum font-semibold text-slate-900">{fmtMonto(fila.saldo_deudor)}</dd>
-                      </div>
-                      <div>
-                        <dt class="text-slate-500">Cuota</dt>
-                        <dd class="tnum font-semibold text-slate-900">{fmtMonto(fila.cuota)}</dd>
-                      </div>
-                      <div>
-                        <dt class="text-slate-500">Vence</dt>
-                        <dd class="tnum text-slate-700">{fmtFecha(fila.cuota_fecha)}</dd>
-                      </div>
-                      <div>
-                        <dt class="text-slate-500">Periodo</dt>
-                        <dd class="tnum text-slate-700">
-                          {fila.cuota_periodo ?? '-'} / {fila.total_periodos}
-                        </dd>
-                      </div>
-                    </dl>
+                  {/* Resumen de Deuda y Cuota */}
+                  <dl class="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-2.5 text-body-sm border border-slate-100">
+                    <div>
+                      <dt class="text-xs text-slate-500">Deuda</dt>
+                      <dd class="tnum font-bold text-slate-900 text-body-md">{fmtMonto(fila.saldo_deudor)}</dd>
+                    </div>
+                    <div>
+                      <dt class="text-xs text-slate-500">Cuota</dt>
+                      <dd class="tnum font-bold text-emerald-800 text-body-md">{fmtMonto(fila.cuota)}</dd>
+                    </div>
+                    <div class="pt-1 border-t border-slate-200/60">
+                      <dt class="text-xs text-slate-500">Vencimiento</dt>
+                      <dd class="tnum text-slate-700">{fmtFecha(fila.cuota_fecha)}</dd>
+                    </div>
+                    <div class="pt-1 border-t border-slate-200/60">
+                      <dt class="text-xs text-slate-500">Período</dt>
+                      <dd class="tnum text-slate-700">
+                        {fila.cuota_periodo ?? '-'} de {fila.total_periodos}
+                      </dd>
+                    </div>
+                  </dl>
 
-                    <p class="mt-2 truncate text-body-sm text-slate-500">
-                      {fila.cliente_telefono || 'Sin telefono'} · {fila.cliente_direccion || 'Sin direccion'}
-                    </p>
+                  <p class="mt-2.5 truncate text-body-sm text-slate-500">
+                    {fila.cliente_telefono || 'Sin teléfono'} · {fila.cliente_direccion || 'Sin dirección'}
+                  </p>
 
-                    {(Number(fila.mora_pendiente) > 0 || Number(fila.interes_vencido) > 0) && (
-                      <div class="mt-2 flex flex-wrap gap-2">
-                        {Number(fila.mora_pendiente) > 0 && (
-                          <span class="tnum rounded-full bg-red-50 px-2 py-0.5 text-label-xs font-medium text-red-700">
-                            Mora {fmtMonto(fila.mora_pendiente)} · {fila.dias_mora} dias
-                          </span>
-                        )}
-                        {Number(fila.interes_vencido) > 0 && (
-                          <span class="tnum rounded-full bg-amber-50 px-2 py-0.5 text-label-xs font-medium text-amber-700">
-                            Interes {fmtMonto(fila.interes_vencido)}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                  {/* Chips de Alerta por Mora o Interés */}
+                  {(Number(fila.mora_pendiente) > 0 || Number(fila.interes_vencido) > 0) && (
+                    <div class="mt-2.5 flex flex-wrap gap-1.5">
+                      {Number(fila.mora_pendiente) > 0 && (
+                        <span class="tnum rounded-md bg-red-100 text-red-800 px-2 py-0.5 text-label-xs font-bold">
+                          Mora {fmtMonto(fila.mora_pendiente)} · {fila.dias_mora} dias
+                        </span>
+                      )}
+                      {Number(fila.interes_vencido) > 0 && (
+                        <span class="tnum rounded-md bg-amber-100 text-amber-800 px-2 py-0.5 text-label-xs font-bold">
+                          Interes {fmtMonto(fila.interes_vencido)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-                    <Button
-                      class="mt-3 w-full"
-                      icon="payments"
-                      onClick={() => abrirCobro(fila)}
-                      data-testid={`cobrar-${fila.id}`}
-                    >
-                      Registrar Cobro
-                    </Button>
-                    <BotonPagare
-                      class="mt-2 w-full"
-                      prestamoId={fila.id}
-                      variant="ghost"
-                      label="Imprimir Pagaré"
-                      onError={setErrorPagare}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </>
-      ) : (
-        <div class="mt-4 grid gap-4 lg:grid-cols-2">
-          <Card title="Recaudos de hoy" subtitle={caja ? `Corte del ${fmtFecha(caja.fecha)}` : undefined}>
-            <p class="tnum text-headline-lg font-extrabold text-slate-900">
-              {fmtMonto(caja?.total_recaudado)}
-            </p>
-            <p class="mt-1 text-body-sm text-slate-500">
-              {fmtCantidad(caja?.recibos_emitidos)} recibos emitidos por {caja?.usuario || 'usted'}
-            </p>
-            <p class="mt-3 text-body-sm text-slate-600">
-              Creditos vigentes en cartera: {fmtCantidad(caja?.creditos_vigentes)}
-            </p>
-          </Card>
+                {/* Botón Único de Acción Prioritaria */}
+                <div class="mt-4 pt-3 border-t border-slate-100">
+                  <Button
+                    class="w-full"
+                    icon="payments"
+                    onClick={() => abrirCobro(fila)}
+                    data-testid={`cobrar-${fila.id}`}
+                  >
+                    Registrar Abono
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-          <Card title="Por metodo de pago">
-            {Object.keys(caja?.por_metodo ?? {}).length === 0 ? (
-              <EmptyState icon="account_balance_wallet" title="Sin recaudos hoy" />
-            ) : (
-              <ul class="space-y-2">
-                {Object.entries(caja!.por_metodo).map(([metodo, dato]) => (
-                  <li key={metodo} class="flex items-center justify-between text-body-md">
-                    <span class="text-slate-600">{dato.label}</span>
-                    <span class="tnum font-semibold text-slate-900">{fmtMonto(dato.monto)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {caja && (
-              <p class="mt-4 border-t border-slate-100 pt-3 text-body-sm text-slate-500">
-                Actualizado {fmtFechaHora(new Date().toISOString())}
-              </p>
-            )}
-          </Card>
-        </div>
-      )}
-
+      {/* MODAL DE ABONO: INSPECCIÓN DE PENDIENTES Y COBRO */}
       <Modal
         open={!!seleccion}
         onClose={cerrar}
-        title="Registrar Cobro"
-        subtitle={seleccion ? `${seleccion.cliente_nombre} · #${seleccion.id}` : undefined}
+        title="Registrar Abono"
+        subtitle={seleccion ? `${seleccion.cliente_nombre} · Préstamo #${seleccion.id}` : undefined}
         icon="payments"
         size="lg"
         footer={
@@ -501,7 +468,79 @@ export function CobrosPage() {
       >
         {seleccion && (
           <div class="space-y-4">
-            {/* Canal de Pago con Botones Grandes */}
+            {/* 1. FICHA DE PENDIENTES DEL PRESTATARIO */}
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                <div class="flex items-center gap-2.5">
+                  <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white font-bold text-xs shadow-sm">
+                    {iniciales(seleccion.cliente_nombre)}
+                  </span>
+                  <div>
+                    <h4 class="font-bold text-slate-900 text-body-md leading-tight">
+                      {seleccion.cliente_nombre}
+                    </h4>
+                    <span class="text-xs text-slate-500 font-mono">Préstamo #{seleccion.id}</span>
+                  </div>
+                </div>
+                {seleccion.cliente_telefono && (
+                  <a
+                    href={`tel:${seleccion.cliente_telefono.replace(/\D/g, '')}`}
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-emerald-700 hover:border-slate-300 shadow-sm transition"
+                    title="Llamar directamente al cliente"
+                  >
+                    <Icon name="phone" size={14} class="text-emerald-600" />
+                    {seleccion.cliente_telefono}
+                  </a>
+                )}
+              </div>
+
+              {/* Grid de 4 Indicadores de lo que debe */}
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-body-sm">
+                <div class="rounded-xl bg-white border border-slate-200/80 p-2.5 shadow-sm">
+                  <span class="text-slate-500 text-xs block">Cuota del Ciclo</span>
+                  <span class="tnum font-bold text-slate-900 text-body-md">
+                    {fmtMonto(seleccion.cuota)}
+                  </span>
+                  <span class="text-[11px] text-slate-500 block">
+                    Período {seleccion.cuota_periodo ?? '-'} de {seleccion.total_periodos}
+                  </span>
+                </div>
+
+                <div class="rounded-xl bg-white border border-slate-200/80 p-2.5 shadow-sm">
+                  <span class="text-slate-500 text-xs block">Vencimiento</span>
+                  <span class="tnum font-semibold text-slate-800 text-body-sm">
+                    {fmtFecha(seleccion.cuota_fecha)}
+                  </span>
+                  <span class="text-[11px] text-slate-500 block">
+                    {seleccion.dias_atraso > 0 ? `${seleccion.dias_atraso} días atraso` : 'Al corriente'}
+                  </span>
+                </div>
+
+                <div class="rounded-xl bg-white border border-slate-200/80 p-2.5 shadow-sm">
+                  <span class="text-slate-500 text-xs block">Mora Exigible</span>
+                  <span
+                    class={`tnum font-bold text-body-md ${
+                      Number(seleccion.mora_pendiente) > 0 ? 'text-red-600' : 'text-slate-700'
+                    }`}
+                  >
+                    {fmtMonto(seleccion.mora_pendiente)}
+                  </span>
+                  <span class="text-[11px] text-slate-500 block">
+                    {Number(seleccion.dias_mora) > 0 ? `${seleccion.dias_mora} días mora` : 'Sin recargo'}
+                  </span>
+                </div>
+
+                <div class="rounded-xl bg-white border border-slate-200/80 p-2.5 shadow-sm">
+                  <span class="text-slate-500 text-xs block">Deuda Total</span>
+                  <span class="tnum font-bold text-slate-900 text-body-md">
+                    {fmtMonto(seleccion.saldo_deudor)}
+                  </span>
+                  <span class="text-[11px] text-slate-500 block">Liquidación total</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. CANAL DE PAGO: EFECTIVO VS TRANSFERENCIA */}
             <div>
               <div class="grid grid-cols-2 gap-2 mb-2">
                 <button
@@ -513,7 +552,11 @@ export function CobrosPage() {
                       : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <Icon name="payments" size={20} class={metodoPago === 'EFECTIVO' ? 'text-emerald-600' : 'text-slate-400'} />
+                  <Icon
+                    name="payments"
+                    size={20}
+                    class={metodoPago === 'EFECTIVO' ? 'text-emerald-600' : 'text-slate-400'}
+                  />
                   Efectivo Físico
                 </button>
                 <button
@@ -525,11 +568,16 @@ export function CobrosPage() {
                       : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <Icon name="account_balance" size={20} class={metodoPago === 'TRANSFERENCIA' ? 'text-blue-600' : 'text-slate-400'} />
+                  <Icon
+                    name="account_balance"
+                    size={20}
+                    class={metodoPago === 'TRANSFERENCIA' ? 'text-blue-600' : 'text-slate-400'}
+                  />
                   Transferencia
                 </button>
               </div>
 
+              {/* Select para accesibilidad y sincronización */}
               <div class="sr-only">
                 <Select
                   label="Metodo de pago"
@@ -541,30 +589,40 @@ export function CobrosPage() {
               </div>
             </div>
 
-            {/* Monto con Sugerencias Rápidas a un Toque */}
+            {/* 3. MONTO CON ATAJOS RÁPIDOS */}
             <div class="space-y-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <span class="text-label-md font-medium text-slate-700">Importe a asentar</span>
+                <span class="text-label-md font-semibold text-slate-800">Importe del Abono</span>
                 <span class="text-xs text-slate-500">
                   Deuda total: <strong class="text-slate-800">{fmtMonto(seleccion.saldo_deudor)}</strong>
                 </span>
               </div>
 
+              {/* Botones de sugerencias a un toque */}
               <div class="flex flex-wrap gap-2">
                 {Number(seleccion.cuota) > 0 && (
                   <button
                     type="button"
                     onClick={() => setMonto(String(Number(seleccion.cuota)))}
-                    class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"
+                    class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
                   >
                     + Pagar Cuota ({fmtMonto(seleccion.cuota)})
+                  </button>
+                )}
+                {Number(seleccion.mora_pendiente) > 0 && Number(seleccion.cuota) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMonto(String(Number(seleccion.cuota) + Number(seleccion.mora_pendiente)))}
+                    class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
+                  >
+                    + Mora y Cuota ({fmtMonto(Number(seleccion.cuota) + Number(seleccion.mora_pendiente))})
                   </button>
                 )}
                 {Number(seleccion.saldo_deudor) > 0 && (
                   <button
                     type="button"
                     onClick={() => setMonto(String(Number(seleccion.saldo_deudor)))}
-                    class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"
+                    class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
                   >
                     + Liquidar Total ({fmtMonto(seleccion.saldo_deudor)})
                   </button>
@@ -594,10 +652,10 @@ export function CobrosPage() {
               </div>
             </div>
 
-            {/* Detalles según el Método de Pago */}
+            {/* 4. DETALLES POR MÉTODO DE PAGO */}
             {metodoPago === 'EFECTIVO' ? (
-              <div class="rounded-xl border border-slate-100 bg-slate-50/80 p-3 space-y-2">
-                <div class="flex items-center gap-2 text-label-xs font-bold uppercase tracking-wider text-slate-500">
+              <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
+                <div class="flex items-center gap-2 text-label-xs font-bold uppercase tracking-wider text-slate-600">
                   <Icon name="payments" size={16} class="text-emerald-600" />
                   Efectivo Físico (Afecta Arqueo Diario)
                 </div>
@@ -612,7 +670,7 @@ export function CobrosPage() {
                     placeholder="Para calcular vuelto"
                   />
                   {Number(recibidoEfectivo) > montoNum && montoNum > 0 ? (
-                    <div class="flex flex-col justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <div class="flex flex-col justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5">
                       <span class="text-xs font-semibold text-emerald-800">Cambio / Vuelto a entregar</span>
                       <span class="tnum text-lg font-bold text-emerald-700">
                         {fmtMonto(Number(recibidoEfectivo) - montoNum)}
@@ -658,7 +716,7 @@ export function CobrosPage() {
               </div>
             ) : null}
 
-            {/* Imputación Prelación Art. 3180 */}
+            {/* 5. PREVISUALIZACIÓN IMPUTACIÓN ART. 3180 */}
             {previewCargando && (
               <p class="flex items-center gap-2 text-body-sm text-slate-500">
                 <Spinner size={16} /> Calculando imputación legal...
