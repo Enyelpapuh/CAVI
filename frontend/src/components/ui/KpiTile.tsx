@@ -33,16 +33,8 @@ export function KpiTile({
   compact = false,
   class: className = '',
 }: KpiTileProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      class={`flex w-full flex-col items-start justify-center text-left ring-1 ring-inset transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
-        COLORES[tono]
-      } ${compact ? 'rounded-xl p-3.5 sm:p-4' : 'rounded-2xl p-6'} ${
-        onClick ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-default'
-      } ${className}`}
-    >
+  const contenido = (
+    <>
       <div class={`flex items-center gap-2.5 ${compact ? 'mb-2' : 'mb-4'}`}>
         <span
           class={`flex shrink-0 items-center justify-center bg-white shadow-sm ring-1 ring-black/5 ${
@@ -59,6 +51,30 @@ export function KpiTile({
       {pie && (
         <span class={`font-medium opacity-70 ${compact ? 'mt-1 text-[11px]' : 'mt-2 text-xs'}`}>{pie}</span>
       )}
-    </button>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        class={`flex w-full flex-col items-start justify-center text-left ring-1 ring-inset transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 cursor-pointer hover:bg-opacity-80 ${
+          COLORES[tono]
+        } ${compact ? 'rounded-xl p-3.5 sm:p-4' : 'rounded-2xl p-6'} ${className}`}
+      >
+        {contenido}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      class={`flex w-full flex-col items-start justify-center text-left ring-1 ring-inset ${
+        COLORES[tono]
+      } ${compact ? 'rounded-xl p-3.5 sm:p-4' : 'rounded-2xl p-6'} ${className}`}
+    >
+      {contenido}
+    </div>
   );
 }

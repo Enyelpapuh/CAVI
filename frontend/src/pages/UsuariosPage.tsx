@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useCallback } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, DataTable, Icon, Input, Modal, Select, type Columna } from '../components/ui';
+import { Button, Card, DataTable, Icon, Input, Modal, Select, ConfirmModal, type Columna } from '../components/ui';
 import { usuarioService } from '../services/api';
 import { useToast } from '../components/ui';
 import { fmtCantidad } from '../lib/format';
@@ -34,6 +34,8 @@ export function UsuariosPage() {
   const [formData, setFormData] = useState<Partial<Usuario> & { password?: string }>(FORM_VACIO);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [usuarioAConfirmar, setUsuarioAConfirmar] = useState<Usuario | null>(null);
+  const [confirmandoEstado, setConfirmandoEstado] = useState(false);
   const toast = useToast();
 
   const fetchUsuarios = async () => {
@@ -107,31 +109,42 @@ export function UsuariosPage() {
     setShowForm(true);
   };
 
-  const handleToggleEstado = async (usuario: Usuario) => {
-    const accion = usuario.activo ? 'deshabilitar' : 'habilitar';
-    if (!confirm(`¿Está seguro de ${accion} a este usuario?`)) return;
+  const handleToggleEstado = (usuario: Usuario) => {
+    setUsuarioAConfirmar(usuario);
+  };
+
+  const ejecutarToggleEstado = async () => {
+    if (!usuarioAConfirmar) return;
+    const accion = usuarioAConfirmar.activo ? 'deshabilitar' : 'habilitar';
+    setConfirmandoEstado(true);
     try {
-      await usuarioService.update(usuario.id, { activo: !usuario.activo });
-      toast.success(`Usuario ${usuario.activo ? 'deshabilitado' : 'habilitado'}`);
+      await usuarioService.update(usuarioAConfirmar.id, { activo: !usuarioAConfirmar.activo });
+      toast.success(`Usuario ${usuarioAConfirmar.activo ? 'deshabilitado' : 'habilitado'} exitosamente`);
+      setUsuarioAConfirmar(null);
       fetchUsuarios();
     } catch {
       toast.error(`Error al ${accion} el usuario`);
+    } finally {
+      setConfirmandoEstado(false);
     }
   };
 
-  const cerrarForm = () => {
+  const cerrarForm = useCallback(() => {
     setEditing(null);
     setFormData(FORM_VACIO);
     setFormErrors({});
     setShowForm(false);
-  };
+  }, []);
 
-  const cambiar = (campo: keyof typeof formData, valor: string | boolean) => {
+  const cambiar = useCallback((campo: keyof typeof formData, valor: string | boolean) => {
     setFormData((prev) => ({ ...prev, [campo]: valor }));
-    if (formErrors[campo as string]) {
-      setFormErrors((prev) => ({ ...prev, [campo as string]: '' }));
-    }
-  };
+    setFormErrors((prev) => {
+      if (prev[campo as string]) {
+        return { ...prev, [campo as string]: '' };
+      }
+      return prev;
+    });
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(total / POR_PAGINA));
 
@@ -337,6 +350,25 @@ export function UsuariosPage() {
           />
         </form>
       </Modal>
+
+      {/* Modal de confirmación para activar/desactivar usuario */}
+      {usuarioAConfirmar && (
+        <ConfirmModal
+          open={Boolean(usuarioAConfirmar)}
+          onClose={() => setUsuarioAConfirmar(null)}
+          onConfirm={ejecutarToggleEstado}
+          loading={confirmandoEstado}
+          title={usuarioAConfirmar.activo ? 'Deshabilitar Usuario' : 'Habilitar Usuario'}
+          message={
+            usuarioAConfirmar.activo
+              ? `¿Está seguro de deshabilitar al usuario "${usuarioAConfirmar.nombre_completo}" (${usuarioAConfirmar.correo})? El operador no podrá ingresar a la plataforma.`
+              : `¿Desea habilitar nuevamente al usuario "${usuarioAConfirmar.nombre_completo}" (${usuarioAConfirmar.correo}) para otorgarle acceso al sistema?`
+          }
+          variant={usuarioAConfirmar.activo ? 'danger' : 'primary'}
+          confirmText={usuarioAConfirmar.activo ? 'Deshabilitar' : 'Habilitar'}
+          cancelText="Cancelar"
+        />
+      )}
     </Layout>
   );
 }

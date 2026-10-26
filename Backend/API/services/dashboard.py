@@ -141,13 +141,34 @@ def resumen_dashboard(hoy=None, limite=LIMITE_CARTERA):
 
     cartera = resumen_cartera(hoy=hoy, limite=limite)
     fondos = Fondo.objects.filter(activo=True)
-    abonos = Pago.objects.filter(fecha_pago=hoy).aggregate(
+    abonos = Pago.objects.filter(fecha_pago=hoy, estado='VALIDO').aggregate(
         total=Sum('monto_total'), cantidad=Count('id')
     )
+
+    # Alertas de recibos anulados en las últimas 24 horas (supervisión inmediata)
+    limite_24h = timezone.now() - timezone.timedelta(hours=24)
+    anulaciones_24h = Pago.objects.filter(
+        estado='ANULADO',
+        anulado_en__gte=limite_24h
+    ).select_related('anulado_por', 'prestamo__cliente').order_by('-anulado_en')[:5]
+
+    alertas_anulaciones = [
+        {
+            'id': p.id,
+            'codigo': p.codigo_comprobante,
+            'monto': _d(p.monto_total),
+            'cliente': str(p.prestamo.cliente),
+            'anulado_por': p.anulado_por.nombre_completo if p.anulado_por else 'Sistema',
+            'motivo': p.motivo_anulacion,
+            'anulado_en': p.anulado_en,
+        }
+        for p in anulaciones_24h
+    ]
 
     return _serializable({
         'fecha': hoy,
         'clientes_activos': Cliente.objects.filter(activo=True).count(),
+        'alertas_anulaciones': alertas_anulaciones,
         'bolsas': {
             'cantidad': fondos.count(),
             'capital_en_calle': sum((_d(f.saldo_disponible) for f in fondos), Decimal('0.00')),
@@ -186,7 +207,7 @@ def caja_de_usuario(usuario, fecha=None):
     50/50 ni ganancias administrativas (privacidad Ley 787).
     """
     fecha = fecha or timezone.localdate()
-    pagos = Pago.objects.filter(usuario=usuario, fecha_pago=fecha)
+    pagos = Pago.objects.filter(usuario=usuario, fecha_pago=fecha, estado='VALIDO')
 
     totales = pagos.aggregate(total=Sum('monto_total'), cantidad=Count('id'))
 

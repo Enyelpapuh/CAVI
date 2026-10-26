@@ -1,9 +1,10 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/preact';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../services/api', () => ({
   pagoService: {
     getRecibo: vi.fn(),
+    abrirReciboHtml: vi.fn(),
   },
 }));
 
@@ -76,12 +77,16 @@ beforeEach(() => {
   (pagoService.getRecibo as any).mockResolvedValue(RECIBO_ADMIN);
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('PagoRecibo', () => {
   it('imprime el monto recibido en letras (Ley 842)', () => {
     expect(montoEnLetras(1845.98)).toBe(
-      'Mil ochocientos cuarenta y cinco córdobas con 98/100'
+      'Mil ochocientos cuarenta y cinco córdobas con noventa y ocho centavos (98/100)'
     );
-    expect(montoEnLetras(0)).toBe('Cero córdobas con 00/100');
+    expect(montoEnLetras(0)).toBe('Cero córdobas con cero centavos (00/100)');
   });
 
   it('muestra desglose completo y liquidación 50/50 para administración', async () => {
@@ -114,8 +119,76 @@ describe('PagoRecibo', () => {
     render(<PagoRecibo pagoId={10} onClose={() => {}} />);
     await waitFor(() => expect(screen.getAllByText(/PAG-00010/).length).toBeGreaterThan(0));
 
-    fireEvent.click(screen.getByRole('button', { name: /Imprimir \/ PDF/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Imprimir/ }));
     expect(printSpy).toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+
+  it('abre el recibo oficial en nueva pestaña HTML al presionar Imprimir o Abrir en pestaña', async () => {
+    const escribir = vi.fn();
+    const ventana = {
+      document: {
+        write: escribir,
+        close: vi.fn(),
+        open: vi.fn(),
+      },
+      focus: vi.fn(),
+    };
+    vi.spyOn(window, 'open').mockReturnValue(ventana as unknown as Window);
+    (pagoService.abrirReciboHtml as any).mockResolvedValue('<html>RECIBO OFICIAL HTML</html>');
+
+    render(<PagoRecibo pagoId={10} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getAllByText(/PAG-00010/).length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByTitle(/Abrir recibo oficial en nueva pestaña/));
+
+    await waitFor(() => expect(pagoService.abrirReciboHtml).toHaveBeenCalledWith(10));
+    expect(escribir).toHaveBeenCalledWith('<html>RECIBO OFICIAL HTML</html>');
+    expect(ventana.focus).toHaveBeenCalled();
+  });
+
+  it('permite visualizar un recibo cancelado con marca de agua INVÁLIDO y formato formal', async () => {
+    const RECIBO_ANULADO = {
+      ...RECIBO_ADMIN,
+      estado: 'ANULADO',
+      motivo_anulacion: 'Error de digitación en monto durante el arqueo de caja.',
+      anulado_por_nombre: 'Supervisor Carlos',
+      anulado_en: '2026-10-02T15:30:00Z',
+    };
+    (pagoService.getRecibo as any).mockResolvedValue(RECIBO_ANULADO);
+
+    render(<PagoRecibo pagoId={10} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getAllByText(/PAG-00010/).length).toBeGreaterThan(0));
+
+    // Debe mostrar la gran marca de agua de INVÁLIDO
+    const marcaAgua = screen.getByTestId('marca-agua-invalido');
+    expect(marcaAgua).toBeInTheDocument();
+    expect(marcaAgua).toHaveTextContent(/ANULADO · INVÁLIDO/);
+    expect(marcaAgua).toHaveTextContent(/OPERACIÓN REVERTIDA CONTABLEMENTE/);
+
+    // Debe mostrar la causa de invalidación y el usuario que lo anuló
+    expect(screen.getByText(/Error de digitación en monto durante el arqueo de caja/)).toBeInTheDocument();
+    expect(screen.getByText(/Supervisor Carlos/)).toBeInTheDocument();
+
+    // El estado legal debe indicar ANULADO · INVÁLIDO
+    expect(screen.getAllByText(/ANULADO · INVÁLIDO/).length).toBeGreaterThan(0);
+
+    // Debe tener habilitado el botón de imprimir comprobante anulado
+    const btnImprimir = screen.getByRole('button', { name: /Imprimir Comprobante Anulado/ });
+    expect(btnImprimir).toBeInTheDocument();
+
+    const printSpy = vi.fn();
+    vi.stubGlobal('print', printSpy);
+    fireEvent.click(btnImprimir);
+    expect(printSpy).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('aplica clases de aislamiento de impresión tipo pagaré', async () => {
+    const { container } = render(<PagoRecibo pagoId={10} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getAllByText(/PAG-00010/).length).toBeGreaterThan(0));
+
+    expect(container.querySelector('.comprobante-recibo-imprimible')).toBeInTheDocument();
+    expect(container.querySelector('.comprobante-recibo-hoja')).toBeInTheDocument();
   });
 });

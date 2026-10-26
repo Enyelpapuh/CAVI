@@ -1,64 +1,38 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Spinner, ToastProvider } from './components/ui';
 import { RouterProvider, useRouter } from './lib/router';
 import './index.css';
 
-// Lazy loader helper
-function lazy(importFunc: () => Promise<any>) {
-  return function LazyComponent(props: any) {
-    const [Component, setComponent] = useState<any>(null);
-
-    useEffect(() => {
-      importFunc().then(module => {
-        const Comp = module.default || Object.values(module)[0];
-        setComponent(() => Comp);
-      });
-    }, []);
-
-    if (!Component) {
-      return (
-        <div class="flex min-h-screen items-center justify-center bg-slate-50">
-          <div class="flex flex-col items-center opacity-60">
-            <Spinner size={32} />
-          </div>
-        </div>
-      );
-    }
-    return <Component {...props} />;
-  };
-}
-
-// Lazy loaded pages
-const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
-const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
-const ClientesPage = lazy(() => import('./pages/ClientesPage').then(m => ({ default: m.ClientesPage })));
-const FondosPage = lazy(() => import('./pages/FondosPage').then(m => ({ default: m.FondosPage })));
-const PrestamoFormPage = lazy(() => import('./pages/PrestamoFormPage').then(m => ({ default: m.PrestamoFormPage })));
-const CobrosPage = lazy(() => import('./pages/CobrosPage').then(m => ({ default: m.CobrosPage })));
-
-// Nuevas vistas
-const UsuariosPage = lazy(() => import('./pages/UsuariosPage').then(m => ({ default: m.UsuariosPage })));
-const PermisosPage = lazy(() => import('./pages/PermisosPage').then(m => ({ default: m.PermisosPage })));
-const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
-const EstadosCuentaPage = lazy(() => import('./pages/EstadosCuentaPage').then(m => ({ default: m.EstadosCuentaPage })));
-const InformeBolsasPage = lazy(() => import('./pages/InformeBolsasPage').then(m => ({ default: m.InformeBolsasPage })));
-const ArqueoPage = lazy(() => import('./pages/ArqueoPage').then(m => ({ default: m.ArqueoPage })));
+// Vistas del sistema
+import { LoginPage } from './pages/LoginPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { ClientesPage } from './pages/ClientesPage';
+import { FondosPage } from './pages/FondosPage';
+import { PrestamoFormPage } from './pages/PrestamoFormPage';
+import { CobrosPage } from './pages/CobrosPage';
+import { UsuariosPage } from './pages/UsuariosPage';
+import { PermisosPage } from './pages/PermisosPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { EstadosCuentaPage } from './pages/EstadosCuentaPage';
+import { InformeBolsasPage } from './pages/InformeBolsasPage';
+import { ArqueoPage } from './pages/ArqueoPage';
+import { AuditoriaPage } from './pages/AuditoriaPage';
 
 function AppContent() {
-  const { path: currentPath, navigate } = useRouter();
+  const { pathname, navigate } = useRouter();
   const { isLoading, isAuthenticated } = useAuth();
 
   // Redirect logic
   useEffect(() => {
     if (isLoading) return;
     
-    if (!isAuthenticated && currentPath !== '/login') {
+    if (!isAuthenticated && pathname !== '/login') {
       navigate('/login');
-    } else if (isAuthenticated && currentPath === '/login') {
+    } else if (isAuthenticated && pathname === '/login') {
       navigate('/');
     }
-  }, [isLoading, isAuthenticated, currentPath]);
+  }, [isLoading, isAuthenticated, pathname]);
 
   if (isLoading) {
     return (
@@ -74,17 +48,18 @@ function AppContent() {
   if (!isAuthenticated) {
     PageComponent = LoginPage;
   } else {
-    if (currentPath === '/clientes') PageComponent = ClientesPage;
-    else if (currentPath === '/fondos') PageComponent = FondosPage;
-    else if (currentPath === '/prestamos/nuevo') PageComponent = PrestamoFormPage;
-    else if (currentPath === '/cobros') PageComponent = CobrosPage;
-    else if (currentPath === '/reportes/estados-cuenta') PageComponent = EstadosCuentaPage;
-    else if (currentPath === '/reportes/financiero' || currentPath === '/reportes/bolsas') PageComponent = InformeBolsasPage;
-    else if (currentPath === '/reportes/arqueo') PageComponent = ArqueoPage;
-    else if (currentPath === '/seguridad/usuarios') PageComponent = UsuariosPage;
-    else if (currentPath === '/seguridad/permisos') PageComponent = PermisosPage;
-    else if (currentPath === '/seguridad/settings') PageComponent = SettingsPage;
-    else if (currentPath === '/' || currentPath === '/dashboard') PageComponent = DashboardPage;
+    if (pathname === '/clientes') PageComponent = ClientesPage;
+    else if (pathname === '/fondos') PageComponent = FondosPage;
+    else if (pathname === '/prestamos/nuevo') PageComponent = PrestamoFormPage;
+    else if (pathname === '/cobros') PageComponent = CobrosPage;
+    else if (pathname === '/auditoria') PageComponent = AuditoriaPage;
+    else if (pathname === '/reportes/estados-cuenta') PageComponent = EstadosCuentaPage;
+    else if (pathname === '/reportes/financiero' || pathname === '/reportes/bolsas') PageComponent = InformeBolsasPage;
+    else if (pathname === '/reportes/arqueo') PageComponent = ArqueoPage;
+    else if (pathname === '/seguridad/usuarios') PageComponent = UsuariosPage;
+    else if (pathname === '/seguridad/permisos') PageComponent = PermisosPage;
+    else if (pathname === '/seguridad/settings') PageComponent = SettingsPage;
+    else if (pathname === '/' || pathname === '/dashboard') PageComponent = DashboardPage;
     // fallback
     else PageComponent = DashboardPage;
   }

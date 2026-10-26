@@ -22,6 +22,7 @@ const POR_PAGINA = 20;
 
 const ESTILO_MOVIMIENTO: Record<string, string> = {
   INYECCION: 'border-green-200 bg-green-50 text-green-700 font-semibold',
+  REINTEGRO: 'border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold',
   RETIRO: 'border-orange-200 bg-orange-50 text-orange-700 font-semibold',
   DESEMBOLSO: 'border-blue-200 bg-blue-50 text-blue-700 font-semibold',
   GANANCIA: 'border-amber-200 bg-amber-50 text-amber-700 font-semibold',
@@ -29,6 +30,7 @@ const ESTILO_MOVIMIENTO: Record<string, string> = {
 
 const SIGNO: Record<string, string> = {
   INYECCION: '+',
+  REINTEGRO: '+',
   GANANCIA: '+',
   RETIRO: '-',
   DESEMBOLSO: '-',
@@ -53,7 +55,52 @@ export function FondosPage() {
   const [error, setError] = useState('');
   const toast = useToast();
 
-  const [createForm, setCreateForm] = useState({ nombre: '', familiar: '', capital_inicial: '' });
+  // Estados de privacidad de saldos y expansión de información
+  const [saldosOcultos, setSaldosOcultos] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cavi_fondos_ocultar_saldos') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [tarjetasVisibles, setTarjetasVisibles] = useState<Record<number, boolean>>({});
+  const [fondosExpandidos, setFondosExpandidos] = useState<Record<number, boolean>>({});
+
+  const toggleSaldosOcultos = () => {
+    setSaldosOcultos((prev) => {
+      const nuevo = !prev;
+      try {
+        localStorage.setItem('cavi_fondos_ocultar_saldos', String(nuevo));
+      } catch {}
+      setTarjetasVisibles({});
+      return nuevo;
+    });
+  };
+
+  const toggleTarjetaVisible = (id: number) => {
+    setTarjetasVisibles((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleExpandido = (id: number) => {
+    setFondosExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const [createForm, setCreateForm] = useState({
+    nombre: '',
+    familiar: '',
+    tipo_persona: 'NATURAL' as 'NATURAL' | 'JURIDICA',
+    identificacion: '',
+    nombres_titular: '',
+    apellidos_titular: '',
+    razon_social: '',
+    ruc: '',
+    representante_legal: '',
+    cedula_representante: '',
+    telefono_contacto: '',
+    direccion_legal: '',
+    parentesco_relacion: '',
+    capital_inicial: '',
+  });
   const [montoForm, setMontoForm] = useState({ monto: '', descripcion: '' });
 
   const [movimientos, setMovimientos] = useState<MovimientoFondo[]>([]);
@@ -92,24 +139,55 @@ export function FondosPage() {
 
   const handleCreate = async (e: Event) => {
     e.preventDefault();
-    if (!createForm.nombre || !createForm.familiar || !createForm.capital_inicial) {
-      setError('Todos los campos son obligatorios');
+    if (!createForm.nombre || !createForm.capital_inicial) {
+      setError('El nombre de la bolsa y el capital inicial son obligatorios.');
       return;
     }
+    if (Number(createForm.capital_inicial) <= 0) {
+      setError('El capital inicial debe ser mayor a cero.');
+      return;
+    }
+
     setSubmitting(true);
     setError('');
     try {
-      await fondoService.create(createForm);
-      toast.success('Fondo creado');
+      const familiarCalculado =
+        createForm.familiar.trim() ||
+        (createForm.tipo_persona === 'NATURAL'
+          ? `${createForm.nombres_titular} ${createForm.apellidos_titular}`.trim() || createForm.nombre
+          : createForm.razon_social.trim() || createForm.nombre);
+
+      const payload = {
+        ...createForm,
+        familiar: familiarCalculado,
+      };
+
+      await fondoService.create(payload);
+      toast.success('Bolsa de capital registrada exitosamente con respaldo legal');
       setModal({ type: 'none' });
-      setCreateForm({ nombre: '', familiar: '', capital_inicial: '' });
+      setCreateForm({
+        nombre: '',
+        familiar: '',
+        tipo_persona: 'NATURAL',
+        identificacion: '',
+        nombres_titular: '',
+        apellidos_titular: '',
+        razon_social: '',
+        ruc: '',
+        representante_legal: '',
+        cedula_representante: '',
+        telefono_contacto: '',
+        direccion_legal: '',
+        parentesco_relacion: '',
+        capital_inicial: '',
+      });
       fetchFondos();
     } catch (err: any) {
       const data = err.response?.data;
       if (data && typeof data === 'object') {
-        setError(Object.values(data).flat().map(String).join(' ') || 'Error al crear el fondo');
+        setError(Object.values(data).flat().map(String).join(' ') || 'Error al crear la bolsa');
       } else {
-        setError('Error al crear el fondo');
+        setError('Error al crear la bolsa de capital');
       }
     } finally {
       setSubmitting(false);
@@ -152,10 +230,10 @@ export function FondosPage() {
     loadMovimientos(fondo.id, 1);
   };
 
-  const cerrar = () => {
+  const cerrar = useCallback(() => {
     setModal({ type: 'none' });
     setError('');
-  };
+  }, []);
 
   // Métricas Consolidadas Globales de Capital
   const capitalEnCalle = useMemo(
@@ -253,15 +331,25 @@ export function FondosPage() {
         titulo="Bolsas de Capital"
         descripcion={`Control de liquidez en caja y capital regado por fondo familiar (${fmtCantidad(fondos.length)} bolsa${fondos.length === 1 ? '' : 's'})`}
         actions={
-          <Button
-            icon="add"
-            onClick={() => {
-              setError('');
-              setModal({ type: 'create' });
-            }}
-          >
-            Nuevo Fondo
-          </Button>
+          <div class="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              icon={saldosOcultos ? 'visibility' : 'visibility_off'}
+              onClick={toggleSaldosOcultos}
+              title={saldosOcultos ? 'Mostrar todos los saldos de caja' : 'Ocultar saldos por privacidad'}
+            >
+              {saldosOcultos ? 'Mostrar Saldos' : 'Ocultar Saldos'}
+            </Button>
+            <Button
+              icon="add"
+              onClick={() => {
+                setError('');
+                setModal({ type: 'create' });
+              }}
+            >
+              Nuevo Fondo
+            </Button>
+          </div>
         }
       />
 
@@ -270,7 +358,7 @@ export function FondosPage() {
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <KpiTile
             label="Dinero Disponible"
-            value={fmtMonto(saldoDisponible)}
+            value={saldosOcultos ? 'C$ ••••••' : fmtMonto(saldoDisponible)}
             icon="savings"
             tono="esmeralda"
             pie="Líquido en caja para prestar"
@@ -387,6 +475,14 @@ export function FondosPage() {
           {fondosFiltrados.map((fondo) => {
             const capitalTotalFondo =
               (Number(fondo.saldo_disponible) || 0) + (Number(fondo.capital_colocado) || 0);
+            const ratioColocadoFondo =
+              capitalTotalFondo > 0
+                ? ((Number(fondo.capital_colocado) || 0) / capitalTotalFondo) * 100
+                : 0;
+            const ratioDisponibleFondo = 100 - ratioColocadoFondo;
+            const estaExpandido = !!fondosExpandidos[fondo.id];
+            const oculto = saldosOcultos && !tarjetasVisibles[fondo.id];
+
             return (
               <Card key={fondo.id} padded={false} class="flex flex-col overflow-hidden border border-slate-200 hover:shadow-md transition-shadow">
                 {/* Cabecera de la Bolsa */}
@@ -396,9 +492,22 @@ export function FondosPage() {
                       {iniciales(fondo.nombre)}
                     </span>
                     <div class="min-w-0">
-                      <h3 class="truncate text-headline-sm font-bold text-slate-900">{fondo.nombre}</h3>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <h3 class="truncate text-headline-sm font-bold text-slate-900">{fondo.nombre}</h3>
+                        <span
+                          class={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                            fondo.tipo_persona === 'JURIDICA'
+                              ? 'border border-indigo-200 bg-indigo-50 text-indigo-700'
+                              : 'border border-slate-200 bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {fondo.tipo_persona === 'JURIDICA' ? 'Persona Jurídica' : 'Persona Natural'}
+                        </span>
+                      </div>
                       <p class="truncate text-body-xs text-slate-500">
-                        Titular: <span class="font-medium text-slate-700">{fondo.familiar}</span>
+                        {fondo.tipo_persona === 'JURIDICA'
+                          ? `RUC: ${fondo.ruc || 'N/D'} · ${fondo.familiar}`
+                          : `Titular: ${fondo.familiar}${fondo.identificacion ? ` (${fondo.identificacion})` : ''}`}
                       </p>
                     </div>
                   </div>
@@ -414,15 +523,34 @@ export function FondosPage() {
                 </div>
 
                 {/* Cuerpo: Métricas Clave de Liquidez y Capital */}
-                <div class="flex-1 space-y-4 px-5 py-4">
-                  {/* Destacado: Dinero Disponible */}
-                  <div class="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3.5">
-                    <span class="block text-label-xs font-semibold uppercase tracking-wider text-emerald-800">
-                      Dinero Disponible (en caja)
-                    </span>
-                    <p class="tnum mt-1 text-headline-lg font-black text-emerald-700">
-                      {fmtMonto(fondo.saldo_disponible)}
-                    </p>
+                <div class="flex-1 space-y-3 px-5 py-4">
+                  {/* Destacado: Dinero Disponible con botón de privacidad */}
+                  <div class="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3.5 transition-all">
+                    <div class="flex items-center justify-between">
+                      <span class="block text-label-xs font-semibold uppercase tracking-wider text-emerald-800">
+                        Dinero Disponible (en caja)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleTarjetaVisible(fondo.id)}
+                        aria-label={oculto ? `Mostrar saldo de ${fondo.nombre}` : `Ocultar saldo de ${fondo.nombre}`}
+                        class="rounded-md p-1 text-emerald-700/70 hover:bg-emerald-100/70 hover:text-emerald-900 transition-colors"
+                        title={oculto ? 'Mostrar saldo' : 'Ocultar saldo por privacidad'}
+                      >
+                        <Icon name={oculto ? 'visibility' : 'visibility_off'} size={16} />
+                      </button>
+                    </div>
+
+                    <div class="mt-1 flex items-baseline gap-2">
+                      <p class="tnum text-headline-lg font-black text-emerald-700">
+                        {oculto ? 'C$ ••••••' : fmtMonto(fondo.saldo_disponible)}
+                      </p>
+                      {oculto && (
+                        <span class="rounded bg-emerald-100/80 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          Oculto
+                        </span>
+                      )}
+                    </div>
                     <span class="text-body-xs text-emerald-600/80">Líquido disponible para desembolsos</span>
                   </div>
 
@@ -450,6 +578,109 @@ export function FondosPage() {
                       <span class="text-[10px] text-slate-400">Registrado</span>
                     </div>
                   </dl>
+
+                  {/* Botón Ver Más Información */}
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandido(fondo.id)}
+                    class="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-body-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+                  >
+                    <span class="flex items-center gap-1.5">
+                      <Icon name={estaExpandido ? 'expand_less' : 'expand_more'} size={18} class="text-slate-500" />
+                      {estaExpandido ? 'Ver menos detalles' : 'Ver más información y rendimiento'}
+                    </span>
+                    <span class="text-[11px] font-mono text-slate-400">
+                      {estaExpandido ? 'Colapsar' : 'Detalles'}
+                    </span>
+                  </button>
+
+                  {/* Panel Extendido Desplegable */}
+                  {estaExpandido && (
+                    <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-3 text-body-xs animate-in fade-in duration-150">
+                      <div class="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                        <span class="font-bold text-slate-800">Rendimiento Acumulado</span>
+                        <div class="text-right">
+                          <span class="font-extrabold text-emerald-700 tnum">
+                            {fmtMonto(fondo.ganancias_acumuladas ?? 0)}
+                          </span>
+                          <span class="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.2 text-[10px] font-bold text-emerald-800">
+                            {fondo.rentabilidad ? `${fondo.rentabilidad}%` : '0.00%'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Ratio Colocación vs. Liquidez individual */}
+                      {capitalTotalFondo > 0 && (
+                        <div>
+                          <div class="flex items-center justify-between text-[11px] text-slate-600 mb-1">
+                            <span>Colocado: {ratioColocadoFondo.toFixed(1)}%</span>
+                            <span>En Caja: {ratioDisponibleFondo.toFixed(1)}%</span>
+                          </div>
+                          <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 flex">
+                            <div class="bg-indigo-500" style={{ width: `${ratioColocadoFondo}%` }} />
+                            <div class="bg-emerald-500" style={{ width: `${ratioDisponibleFondo}%` }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Ficha de Cumplimiento Legal */}
+                      <div class="rounded-lg border border-slate-200 bg-white p-3 space-y-1.5 text-[11px] text-slate-700">
+                        <div class="font-bold text-slate-900 border-b border-slate-100 pb-1 flex items-center justify-between">
+                          <span>Información Legal de la Bolsa</span>
+                          <span class="font-mono text-slate-500 font-semibold">
+                            {fondo.tipo_persona_display || (fondo.tipo_persona === 'JURIDICA' ? 'Persona Jurídica' : 'Persona Natural')}
+                          </span>
+                        </div>
+                        {fondo.tipo_persona === 'JURIDICA' ? (
+                          <>
+                            <div class="grid grid-cols-2 gap-1">
+                              <div><span class="text-slate-400">Razón Social:</span> <span class="font-semibold">{fondo.razon_social || fondo.familiar}</span></div>
+                              <div><span class="text-slate-400">RUC:</span> <span class="font-mono font-semibold">{fondo.ruc || 'No registrado'}</span></div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-1">
+                              <div><span class="text-slate-400">Representante Legal:</span> <span class="font-semibold">{fondo.representante_legal || 'No registrado'}</span></div>
+                              <div><span class="text-slate-400">Cédula Representante:</span> <span class="font-mono">{fondo.cedula_representante || 'N/D'}</span></div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div class="grid grid-cols-2 gap-1">
+                              <div><span class="text-slate-400">Titular:</span> <span class="font-semibold">{fondo.familiar}</span></div>
+                              <div><span class="text-slate-400">Cédula:</span> <span class="font-mono font-semibold">{fondo.identificacion || 'No registrada'}</span></div>
+                            </div>
+                            {fondo.parentesco_relacion && (
+                              <div><span class="text-slate-400">Parentesco / Relación:</span> <span class="font-semibold">{fondo.parentesco_relacion}</span></div>
+                            )}
+                          </>
+                        )}
+                        <div class="grid grid-cols-2 gap-1 pt-1 border-t border-slate-100 text-slate-600">
+                          <div><span class="text-slate-400">Teléfono:</span> <span>{fondo.telefono_contacto || 'No registrado'}</span></div>
+                          <div><span class="text-slate-400">Domicilio:</span> <span class="truncate block" title={fondo.direccion_legal || ''}>{fondo.direccion_legal || 'No especificado'}</span></div>
+                        </div>
+                      </div>
+
+                      <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-600 pt-1">
+                        <div>
+                          <span class="text-slate-400 block">Registrado el:</span>
+                          <span class="font-medium text-slate-800">{fmtFechaHora(fondo.creado_en)}</span>
+                        </div>
+                        <div>
+                          <span class="text-slate-400 block">Última operación:</span>
+                          <span class="font-medium text-slate-800">{fmtFechaHora(fondo.actualizado_en)}</span>
+                        </div>
+                      </div>
+
+                      <div class="pt-1">
+                        <a
+                          href="/reportes/bolsas"
+                          class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                        >
+                          <Icon name="analytics" size={14} />
+                          Ver informe financiero mensual de bolsas &rarr;
+                        </a>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Acciones Operativas de la Bolsa */}
@@ -494,50 +725,187 @@ export function FondosPage() {
         </div>
       )}
 
-      {/* Modal: Nuevo Fondo */}
+      {/* Modal: Crear Bolsa de Capital con Datos Legales */}
       <Modal
         open={modal.type === 'create'}
         onClose={cerrar}
-        title="Nuevo Fondo"
-        subtitle="Bolsa de inversión familiar"
+        title="Crear Bolsa de Capital"
+        subtitle="Constituya una nueva bolsa independiente con respaldo e información legal"
         icon="savings"
+        size="lg"
         footer={
           <>
             <Button variant="ghost" onClick={cerrar} disabled={submitting}>
               Cancelar
             </Button>
             <Button type="submit" form="form-fondo" loading={submitting}>
-              Crear Fondo
+              Crear Bolsa
             </Button>
           </>
         }
       >
         <form id="form-fondo" onSubmit={handleCreate} class="space-y-4">
-          <Input
-            label="Nombre"
-            value={createForm.nombre}
-            onInput={(valor) => setCreateForm({ ...createForm, nombre: valor })}
-            required
-            placeholder="Ej: Fondo Principal"
-          />
-          <Input
-            label="Familiar"
-            value={createForm.familiar}
-            onInput={(valor) => setCreateForm({ ...createForm, familiar: valor })}
-            required
-            placeholder="Ej: Familia Morales"
-          />
-          <Input
-            label="Capital inicial"
-            value={createForm.capital_inicial}
-            onInput={(valor) => setCreateForm({ ...createForm, capital_inicial: valor })}
-            type="number"
-            step="0.01"
-            min="0.01"
-            prefix="C$"
-            required
-            hint="El fondo inicia con este capital disponible en caja."
-          />
+          {/* Selector de Clasificación Legal */}
+          <div>
+            <label class="block text-label-sm font-semibold text-slate-700 mb-1.5">
+              Tipo de Persona Titular / Aportante de la Bolsa
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCreateForm({ ...createForm, tipo_persona: 'NATURAL' })}
+                class={`flex items-center justify-center gap-2 rounded-xl border p-3 text-body-sm font-semibold transition-all ${
+                  createForm.tipo_persona === 'NATURAL'
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Icon name="person" size={18} />
+                Persona Natural (Titular Individual)
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateForm({ ...createForm, tipo_persona: 'JURIDICA' })}
+                class={`flex items-center justify-center gap-2 rounded-xl border p-3 text-body-sm font-semibold transition-all ${
+                  createForm.tipo_persona === 'JURIDICA'
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Icon name="account_balance" size={18} />
+                Persona Jurídica (Empresa / Sociedad)
+              </button>
+            </div>
+            <p class="mt-1 text-body-xs text-slate-500">
+              {createForm.tipo_persona === 'NATURAL'
+                ? 'Identificación mediante Cédula de Identidad Ciudadana de Nicaragua.'
+                : 'Identificación institucional mediante Cédula RUC y Representante Legal debidamente facultado.'}
+            </p>
+          </div>
+
+          {/* Datos Generales de la Bolsa */}
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Nombre Descriptivo de la Bolsa"
+              value={createForm.nombre}
+              onInput={(valor) => setCreateForm({ ...createForm, nombre: valor })}
+              required
+              placeholder="Ej: Bolsa Morales C$, Fondo San Juan"
+            />
+            <Input
+              label="Capital Inicial (C$)"
+              value={createForm.capital_inicial}
+              onInput={(valor) => setCreateForm({ ...createForm, capital_inicial: valor })}
+              type="number"
+              step="0.01"
+              min="0.01"
+              prefix="C$"
+              required
+              hint="El fondo inicia con este saldo disponible en caja."
+            />
+          </div>
+
+          {/* Formulario Dinámico según Tipo de Persona */}
+          {createForm.tipo_persona === 'NATURAL' ? (
+            <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+              <div class="flex items-center gap-2 text-label-xs font-bold uppercase tracking-wider text-slate-700">
+                <Icon name="badge" size={16} />
+                Datos Legales del Titular (Persona Natural)
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input
+                  label="Cédula de Identidad"
+                  value={createForm.identificacion}
+                  onInput={(valor) => setCreateForm({ ...createForm, identificacion: valor })}
+                  placeholder="001-XXXXXX-XXXXX"
+                  hint="Cédula nicaragüense del aportante"
+                />
+                <Input
+                  label="Nombres del Titular"
+                  value={createForm.nombres_titular}
+                  onInput={(valor) => setCreateForm({ ...createForm, nombres_titular: valor })}
+                  placeholder="Nombres de pila"
+                />
+                <Input
+                  label="Apellidos del Titular"
+                  value={createForm.apellidos_titular}
+                  onInput={(valor) => setCreateForm({ ...createForm, apellidos_titular: valor })}
+                  placeholder="Apellidos"
+                />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Parentesco / Relación con Administración"
+                  value={createForm.parentesco_relacion}
+                  onInput={(valor) => setCreateForm({ ...createForm, parentesco_relacion: valor })}
+                  placeholder="Ej: Hermano, Cónyuge, Inversionista Externo"
+                />
+                <Input
+                  label="Teléfono de Contacto"
+                  value={createForm.telefono_contacto}
+                  onInput={(valor) => setCreateForm({ ...createForm, telefono_contacto: valor })}
+                  placeholder="8888-0000"
+                />
+              </div>
+              <Input
+                label="Dirección Domiciliar Legal"
+                value={createForm.direccion_legal}
+                onInput={(valor) => setCreateForm({ ...createForm, direccion_legal: valor })}
+                placeholder="Dirección exacta de residencia del titular..."
+              />
+            </div>
+          ) : (
+            <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+              <div class="flex items-center gap-2 text-label-xs font-bold uppercase tracking-wider text-slate-700">
+                <Icon name="account_balance" size={16} />
+                Datos Legales de la Empresa (Persona Jurídica)
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Razón Social / Denominación Legal"
+                  value={createForm.razon_social}
+                  onInput={(valor) => setCreateForm({ ...createForm, razon_social: valor })}
+                  placeholder="Ej: Inversiones del Valle S.A."
+                />
+                <Input
+                  label="Número RUC"
+                  value={createForm.ruc}
+                  onInput={(valor) => setCreateForm({ ...createForm, ruc: valor })}
+                  placeholder="J0310000000000"
+                  hint="Registro Único del Contribuyente (14 dígitos)"
+                />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Nombre del Representante Legal"
+                  value={createForm.representante_legal}
+                  onInput={(valor) => setCreateForm({ ...createForm, representante_legal: valor })}
+                  placeholder="Nombre y apellidos del apoderado"
+                />
+                <Input
+                  label="Cédula del Representante Legal"
+                  value={createForm.cedula_representante}
+                  onInput={(valor) => setCreateForm({ ...createForm, cedula_representante: valor })}
+                  placeholder="001-XXXXXX-XXXXX"
+                />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Teléfono Institucional"
+                  value={createForm.telefono_contacto}
+                  onInput={(valor) => setCreateForm({ ...createForm, telefono_contacto: valor })}
+                  placeholder="2200-0000 / 8888-0000"
+                />
+                <Input
+                  label="Domicilio Fiscal / Dirección Legal"
+                  value={createForm.direccion_legal}
+                  onInput={(valor) => setCreateForm({ ...createForm, direccion_legal: valor })}
+                  placeholder="Dirección legal o sede comercial..."
+                />
+              </div>
+            </div>
+          )}
+
           {error && (
             <p class="flex items-start gap-2 text-body-sm text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">
               <Icon name="warning" size={16} class="mt-0.5 shrink-0" />

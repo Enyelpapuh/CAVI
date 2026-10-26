@@ -142,4 +142,144 @@ describe('FondosPage (Bolsas de Capital)', () => {
       expect(screen.getByText('Retiro de capital')).toBeInTheDocument();
     });
   });
+
+  it('permite alternar la privacidad de saldos y expandir los detalles de la bolsa', async () => {
+    (fondoService.list as any).mockResolvedValue({ results: FONDOS });
+    renderPagina();
+    await waitFor(() => expect(screen.getByText('Fondo A')).toBeInTheDocument());
+
+    // Botón para ocultar saldos
+    const btnOcultar = screen.getByRole('button', { name: /Ocultar Saldos/i });
+    fireEvent.click(btnOcultar);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('C$ ••••••').length).toBeGreaterThan(0);
+    });
+
+    // Botón para expandir detalles
+    const btnVerMas = screen.getAllByRole('button', { name: /Ver más información y rendimiento/i })[0];
+    fireEvent.click(btnVerMas);
+
+    await waitFor(() => {
+      expect(screen.getByText('Rendimiento Acumulado')).toBeInTheDocument();
+      expect(screen.getByText('5%')).toBeInTheDocument();
+    });
+  });
+
+  it('permite crear una bolsa con datos legales de Persona Natural', async () => {
+    (fondoService.list as any).mockResolvedValue({ results: FONDOS });
+    (fondoService.create as any).mockResolvedValue({
+      id: 3,
+      nombre: 'Fondo San Juan',
+      familiar: 'Roberto Morales',
+      tipo_persona: 'NATURAL',
+      capital_inicial: '40000.00',
+    });
+    renderPagina();
+    await waitFor(() => expect(screen.getByText('Fondo A')).toBeInTheDocument());
+
+    // Abrir modal de creación con el botón "Nuevo Fondo"
+    const btnCrear = screen.getByRole('button', { name: /Nuevo Fondo/i });
+    fireEvent.click(btnCrear);
+
+    await waitFor(() => {
+      expect(screen.getByText('Tipo de Persona Titular / Aportante de la Bolsa')).toBeInTheDocument();
+    });
+
+    // Llenar campos
+    fireEvent.input(screen.getByLabelText(/Nombre Descriptivo de la Bolsa/i), {
+      target: { value: 'Fondo San Juan' },
+    });
+    fireEvent.input(screen.getByLabelText(/Capital Inicial/i), {
+      target: { value: '40000.00' },
+    });
+    fireEvent.input(screen.getByLabelText(/Cédula de Identidad/i), {
+      target: { value: '001-150490-0001A' },
+    });
+    fireEvent.input(screen.getByLabelText(/Nombres del Titular/i), {
+      target: { value: 'Roberto' },
+    });
+    fireEvent.input(screen.getByLabelText(/Apellidos del Titular/i), {
+      target: { value: 'Morales' },
+    });
+
+    // Enviar formulario
+    const btnSubmit = screen.getAllByRole('button', { name: 'Crear Bolsa' }).find((b) => b.getAttribute('type') === 'submit');
+    expect(btnSubmit).toBeDefined();
+    fireEvent.click(btnSubmit!);
+
+    await waitFor(() => {
+      expect(fondoService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nombre: 'Fondo San Juan',
+          tipo_persona: 'NATURAL',
+          identificacion: '001-150490-0001A',
+          nombres_titular: 'Roberto',
+          apellidos_titular: 'Morales',
+          familiar: 'Roberto Morales',
+        })
+      );
+    });
+  });
+
+  it('permite cambiar a Persona Jurídica y registrar la bolsa con RUC y Representante Legal', async () => {
+    (fondoService.list as any).mockResolvedValue({ results: FONDOS });
+    (fondoService.create as any).mockResolvedValue({
+      id: 4,
+      nombre: 'Bolsa Mercantil S.A.',
+      familiar: 'Inversiones del Valle S.A.',
+      tipo_persona: 'JURIDICA',
+      capital_inicial: '100000.00',
+    });
+    renderPagina();
+    await waitFor(() => expect(screen.getByText('Fondo A')).toBeInTheDocument());
+
+    // Abrir modal de creación con el botón "Nuevo Fondo"
+    const btnCrear = screen.getByRole('button', { name: /Nuevo Fondo/i });
+    fireEvent.click(btnCrear);
+
+    await waitFor(() => {
+      expect(screen.getByText('Tipo de Persona Titular / Aportante de la Bolsa')).toBeInTheDocument();
+    });
+
+    // Alternar a Persona Jurídica
+    const btnJuridica = screen.getByRole('button', { name: /Persona Jurídica/i });
+    fireEvent.click(btnJuridica);
+
+    // Llenar campos de Persona Jurídica
+    fireEvent.input(screen.getByLabelText(/Nombre Descriptivo de la Bolsa/i), {
+      target: { value: 'Bolsa Mercantil S.A.' },
+    });
+    fireEvent.input(screen.getByLabelText(/Capital Inicial/i), {
+      target: { value: '100000.00' },
+    });
+    fireEvent.input(screen.getByLabelText(/Razón Social/i), {
+      target: { value: 'Inversiones del Valle S.A.' },
+    });
+    fireEvent.input(screen.getByLabelText(/Número RUC/i), {
+      target: { value: 'J0310000123456' },
+    });
+    fireEvent.input(screen.getByLabelText(/Nombre del Representante Legal/i), {
+      target: { value: 'Lic. Armando Vega' },
+    });
+
+    // Enviar formulario
+    const btnSubmit = screen.getAllByRole('button', { name: 'Crear Bolsa' }).find((b) => b.getAttribute('type') === 'submit');
+    expect(btnSubmit).toBeDefined();
+    fireEvent.click(btnSubmit!);
+
+    await waitFor(() => {
+      expect(fondoService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nombre: 'Bolsa Mercantil S.A.',
+          tipo_persona: 'JURIDICA',
+          razon_social: 'Inversiones del Valle S.A.',
+          ruc: 'J0310000123456',
+          representante_legal: 'Lic. Armando Vega',
+          familiar: 'Inversiones del Valle S.A.',
+        })
+      );
+    });
+  });
 });
+

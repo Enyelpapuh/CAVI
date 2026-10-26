@@ -40,6 +40,12 @@ export const SECCIONES_NAV: SeccionNav[] = [
     ],
   },
   {
+    titulo: 'Auditoría',
+    items: [
+      { path: '/auditoria', label: 'Auditoría', icon: 'history', roles: AMBOS },
+    ],
+  },
+  {
     titulo: 'Sistema y Seguridad',
     items: [
       { path: '/seguridad/usuarios', label: 'Usuarios', icon: 'group', roles: SOLO_ADMIN },
@@ -60,6 +66,7 @@ export const TITULOS_RUTA: Record<string, string> = {
   '/fondos': 'Bolsas de Capital',
   '/prestamos/nuevo': 'Nuevo Préstamo',
   '/cobros': 'Abonos y Cobranza',
+  '/auditoria': 'Auditoría',
   '/reportes/estados-cuenta': 'Estados de Cuenta',
   '/reportes/financiero': 'Informes Financieros',
   '/reportes/bolsas': 'Informes Financieros',

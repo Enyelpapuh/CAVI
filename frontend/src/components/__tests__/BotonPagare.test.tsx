@@ -21,8 +21,8 @@ beforeEach(() => {
   clickEnAncla = vi.fn();
   revocar = vi.fn();
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:pagare');
-  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revocar);
-  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickEnAncla);
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revocar as any);
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickEnAncla as any);
 });
 
 afterEach(() => {
@@ -98,5 +98,20 @@ describe('BotonPagare', () => {
     await waitFor(() =>
       expect(onError).toHaveBeenCalledWith(expect.stringContaining('No se pudo generar'))
     );
+  });
+
+  it('abre directamente en ventana HTML formateada cuando abrirVentana es true', async () => {
+    const escribir = vi.fn();
+    const ventana = { document: { write: escribir, close: vi.fn() }, focus: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(ventana as unknown as Window);
+    (prestamoService.abrirPagareHtml as any).mockResolvedValue('<html>PAGARÉ CON FORMATO OFICIAL</html>');
+
+    render(<BotonPagare prestamoId={7} abrirVentana={true} />);
+    fireEvent.click(screen.getByTestId('pagare-7'));
+
+    await waitFor(() => expect(prestamoService.abrirPagareHtml).toHaveBeenCalledWith(7));
+    expect(escribir).toHaveBeenCalledWith('<html>PAGARÉ CON FORMATO OFICIAL</html>');
+    expect(ventana.focus).toHaveBeenCalled();
+    expect(prestamoService.pagarPagare).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,9 @@ from django.db.models import Sum
 from .models import (
     Usuario, Cliente, RolUsuario, Fondo, MovimientoFondo, Prestamo,
     PrestamoFondoDetalle, Pago, PagoFondoDetalle, GananciaAdministracion,
-    ConfiguracionSistema,
+    ConfiguracionSistema, CatDepartamento, CatMunicipio, CatActividadEconomica,
+    CatBanco, CatEstadoPrestamo, CatEstadoCuota, CatEstadoCliente, CatEstadoCaja,
+    CatPermiso, RolPermiso, SesionCaja, CuotaPrestamo, BitacoraActividad, CatTipoActividad,
 )
 from .services.pagos import totales_insolutos, interes_minimo_vencido
 from .services.amortizacion import validar_tasa
@@ -45,9 +47,20 @@ class UsuarioLoginSerializer(serializers.Serializer):
 
 
 class ClienteSerializer(serializers.ModelSerializer):
+    departamento_nombre = serializers.CharField(source='departamento.nombre', read_only=True)
+    municipio_nombre = serializers.CharField(source='municipio.nombre', read_only=True)
+    actividad_catalogo_nombre = serializers.CharField(source='actividad_catalogo.nombre', read_only=True)
+    estado_cliente_nombre = serializers.CharField(source='estado_cliente.nombre', read_only=True)
+
     class Meta:
         model = Cliente
-        fields = ['id', 'cedula', 'nombres', 'apellidos', 'telefono', 'direccion', 'actividad_economica', 'activo', 'creado_en', 'actualizado_en']
+        fields = [
+            'id', 'cedula', 'nombres', 'apellidos', 'telefono', 'direccion',
+            'actividad_economica', 'departamento', 'departamento_nombre',
+            'municipio', 'municipio_nombre', 'actividad_catalogo',
+            'actividad_catalogo_nombre', 'estado_cliente', 'estado_cliente_nombre',
+            'activo', 'creado_en', 'actualizado_en'
+        ]
         read_only_fields = ['id', 'creado_en', 'actualizado_en']
 
     def validate_cedula(self, value):
@@ -72,11 +85,20 @@ class FondoSerializer(serializers.ModelSerializer):
     movimientos = MovimientoFondoSerializer(many=True, read_only=True)
     capital_colocado = serializers.SerializerMethodField()
     rentabilidad = serializers.SerializerMethodField()
+    tipo_persona_display = serializers.CharField(source='get_tipo_persona_display', read_only=True)
 
     class Meta:
         model = Fondo
-        fields = ['id', 'nombre', 'familiar', 'saldo_disponible', 'capital_inicial', 'ganancias_acumuladas', 'activo', 'creado_en', 'actualizado_en', 'movimientos', 'capital_colocado', 'rentabilidad']
-        read_only_fields = ['id', 'creado_en', 'actualizado_en', 'ganancias_acumuladas']
+        fields = [
+            'id', 'nombre', 'familiar', 'tipo_persona', 'tipo_persona_display',
+            'identificacion', 'nombres_titular', 'apellidos_titular',
+            'razon_social', 'ruc', 'representante_legal', 'cedula_representante',
+            'telefono_contacto', 'direccion_legal', 'parentesco_relacion',
+            'saldo_disponible', 'capital_inicial', 'ganancias_acumuladas',
+            'activo', 'creado_en', 'actualizado_en', 'movimientos',
+            'capital_colocado', 'rentabilidad'
+        ]
+        read_only_fields = ['id', 'creado_en', 'actualizado_en', 'ganancias_acumuladas', 'saldo_disponible']
 
     def get_capital_colocado(self, obj):
         from django.db.models import Sum
@@ -90,10 +112,38 @@ class FondoSerializer(serializers.ModelSerializer):
 
 
 class FondoCreateSerializer(serializers.ModelSerializer):
+    familiar = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = Fondo
-        fields = ['id', 'nombre', 'familiar', 'capital_inicial', 'activo']
+        fields = [
+            'id', 'nombre', 'familiar', 'tipo_persona',
+            'identificacion', 'nombres_titular', 'apellidos_titular',
+            'razon_social', 'ruc', 'representante_legal', 'cedula_representante',
+            'telefono_contacto', 'direccion_legal', 'parentesco_relacion',
+            'capital_inicial', 'activo'
+        ]
         read_only_fields = ['id']
+
+    def validate(self, attrs):
+        tipo_persona = attrs.get('tipo_persona', Fondo.TipoPersona.NATURAL)
+        familiar = attrs.get('familiar', '').strip()
+        nombres = attrs.get('nombres_titular', '').strip() if attrs.get('nombres_titular') else ''
+        apellidos = attrs.get('apellidos_titular', '').strip() if attrs.get('apellidos_titular') else ''
+        razon_social = attrs.get('razon_social', '').strip() if attrs.get('razon_social') else ''
+
+        if not familiar:
+            if tipo_persona == Fondo.TipoPersona.NATURAL:
+                if nombres or apellidos:
+                    attrs['familiar'] = f"{nombres} {apellidos}".strip()
+                else:
+                    attrs['familiar'] = attrs.get('nombre', 'Titular Individual')
+            else:
+                if razon_social:
+                    attrs['familiar'] = razon_social
+                else:
+                    attrs['familiar'] = attrs.get('nombre', 'Entidad Jurídica')
+        return attrs
 
     def create(self, validated_data):
         validated_data['saldo_disponible'] = validated_data['capital_inicial']
@@ -329,6 +379,9 @@ class PagoImputacionSerializer(serializers.Serializer):
     fecha_pago = serializers.DateField()
     metodo_pago = serializers.ChoiceField(choices=Pago.MetodoPago.choices)
     referencia_bancaria = serializers.CharField(required=False, allow_blank=True, default='')
+    banco_id = serializers.IntegerField(required=False, allow_null=True)
+    efectivo_recibido = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
+    cambio_devuelto = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
 
     def validate_monto(self, value):
         if value <= 0:
@@ -340,13 +393,17 @@ class PagoSerializer(serializers.ModelSerializer):
     prestamo_cliente = serializers.CharField(source='prestamo.cliente.__str__', read_only=True)
     prestamo_monto = serializers.DecimalField(source='prestamo.monto_principal', max_digits=14, decimal_places=2, read_only=True)
     metodo_pago_display = serializers.CharField(source='get_metodo_pago_display', read_only=True)
+    banco_nombre = serializers.CharField(source='banco.nombre', read_only=True)
     usuario_nombre = serializers.CharField(source='usuario.nombre_completo', read_only=True)
+    anulado_por_nombre = serializers.CharField(source='anulado_por.nombre_completo', read_only=True)
     saldo_insoluto_tras_pago = serializers.SerializerMethodField()
 
     class Meta:
         model = Pago
-        fields = ['id', 'codigo_comprobante', 'prestamo', 'prestamo_cliente', 'prestamo_monto',
-                  'monto_total', 'fecha_pago', 'metodo_pago', 'metodo_pago_display', 'referencia_bancaria',
+        fields = ['id', 'codigo_comprobante', 'codigo_seguridad', 'estado', 'motivo_anulacion',
+                  'anulado_en', 'anulado_por_nombre', 'prestamo', 'prestamo_cliente', 'prestamo_monto',
+                  'monto_total', 'fecha_pago', 'metodo_pago', 'metodo_pago_display', 'banco',
+                  'banco_nombre', 'referencia_bancaria', 'efectivo_recibido', 'cambio_devuelto',
                   'aplicacion_mora', 'aplicacion_interes', 'aplicacion_capital',
                   'interes_administracion', 'interes_fondos',
                   'saldo_insoluto_tras_pago', 'usuario_nombre', 'creado_en']
@@ -371,10 +428,11 @@ class PagoReciboSerializer(PagoSerializer):
     fondos_detalle = PagoFondoDetalleSerializer(many=True, read_only=True)
     ganancia_administracion = serializers.SerializerMethodField()
     saldo_deudor_tras_pago = serializers.SerializerMethodField()
+    qr_data = serializers.SerializerMethodField()
 
     class Meta(PagoSerializer.Meta):
         fields = PagoSerializer.Meta.fields + [
-            'fondos_detalle', 'ganancia_administracion', 'saldo_deudor_tras_pago']
+            'fondos_detalle', 'ganancia_administracion', 'saldo_deudor_tras_pago', 'qr_data']
 
     def get_ganancia_administracion(self, obj):
         ga = getattr(obj, 'ganancia_administracion', None)
@@ -384,6 +442,9 @@ class PagoReciboSerializer(PagoSerializer):
         prestamo = obj.prestamo
         _cap, _int, _mora, deuda, _proy = totales_insolutos(prestamo, obj.fecha_pago)
         return deuda
+
+    def get_qr_data(self, obj):
+        return f"CAVI|{obj.codigo_comprobante}|MONTO:{obj.monto_total}|ESTADO:{obj.estado}|SEC:{obj.codigo_seguridad}"
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -402,6 +463,127 @@ class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'modo_estricto', 'permitir_superar_usura', 'tasa_maxima_legal',
             'dias_gracia', 'permitir_plazo_indefinido', 'tasa_mora_diaria',
-            'actualizado_en',
+            'horas_tolerancia_anulacion', 'actualizado_en',
         ]
         read_only_fields = ['id', 'actualizado_en']
+
+
+class CatDepartamentoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CatDepartamento
+        fields = ['id', 'codigo', 'nombre']
+
+
+class CatMunicipioSerializer(serializers.ModelSerializer):
+    departamento_nombre = serializers.CharField(source='departamento.nombre', read_only=True)
+
+    class Meta:
+        model = CatMunicipio
+        fields = ['id', 'departamento', 'departamento_nombre', 'codigo', 'nombre']
+
+
+class CatActividadEconomicaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CatActividadEconomica
+        fields = ['id', 'codigo', 'nombre', 'sector']
+
+
+class CatBancoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CatBanco
+        fields = ['id', 'codigo', 'nombre', 'requiere_titular', 'activo']
+
+
+class CatEstadoPrestamoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CatEstadoPrestamo
+        fields = ['id', 'codigo', 'nombre', 'es_activo', 'es_mora', 'orden_flujo', 'descripcion']
+
+
+class CatEstadoCuotaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CatEstadoCuota
+        fields = ['id', 'codigo', 'nombre', 'requiere_cobro', 'descripcion']
+
+
+class CatEstadoClienteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CatEstadoCliente
+        fields = ['id', 'codigo', 'nombre', 'permite_credito', 'descripcion']
+
+
+class CatEstadoCajaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CatEstadoCaja
+        fields = ['id', 'codigo', 'nombre', 'permite_movimientos']
+
+
+class CatPermisoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CatPermiso
+        fields = ['id', 'modulo', 'codigo', 'nombre', 'descripcion']
+
+
+class RolPermisoSerializer(serializers.ModelSerializer):
+    permiso_detalle = CatPermisoSerializer(source='permiso', read_only=True)
+
+    class Meta:
+        model = RolPermiso
+        fields = ['id', 'rol', 'permiso', 'permiso_detalle', 'activo']
+
+
+class SesionCajaSerializer(serializers.ModelSerializer):
+    usuario_nombre = serializers.CharField(source='usuario.nombre_completo', read_only=True)
+    supervisor_nombre = serializers.CharField(source='supervisor_cierre.nombre_completo', read_only=True)
+
+    class Meta:
+        model = SesionCaja
+        fields = [
+            'id', 'usuario', 'usuario_nombre', 'fecha_apertura', 'fecha_cierre',
+            'saldo_inicial_efectivo', 'total_cobrado_efectivo', 'total_cobrado_banco',
+            'efectivo_declarado', 'diferencia', 'estado', 'supervisor_cierre',
+            'supervisor_nombre', 'observaciones'
+        ]
+        read_only_fields = ['id', 'fecha_apertura', 'usuario']
+
+
+class CuotaPrestamoSerializer(serializers.ModelSerializer):
+    estado_cuota_nombre = serializers.CharField(source='estado_cuota.nombre', read_only=True)
+
+    class Meta:
+        model = CuotaPrestamo
+        fields = [
+            'id', 'prestamo', 'numero_cuota', 'fecha_vencimiento',
+            'capital_programado', 'interes_programado', 'cuota_total',
+            'saldo_restante', 'capital_pagado', 'interes_pagado',
+            'mora_pagada', 'estado', 'estado_cuota', 'estado_cuota_nombre',
+            'fecha_ultimo_pago', 'creado_en', 'actualizado_en'
+        ]
+        read_only_fields = ['id', 'creado_en', 'actualizado_en']
+
+
+class BitacoraActividadSerializer(serializers.ModelSerializer):
+    usuario_nombre = serializers.CharField(source='usuario.nombre_completo', read_only=True, default=None)
+    usuario_rol = serializers.CharField(source='usuario.rol', read_only=True, default=None)
+    cliente_nombre = serializers.SerializerMethodField()
+    tipo_actividad_nombre = serializers.CharField(source='tipo_actividad.nombre', read_only=True, default=None)
+    codigo_comprobante = serializers.CharField(source='pago.codigo_comprobante', read_only=True, default=None)
+
+    def get_cliente_nombre(self, obj):
+        if obj.cliente:
+            return f"{obj.cliente.nombres} {obj.cliente.apellidos}".strip()
+        return None
+
+    class Meta:
+        model = BitacoraActividad
+        fields = [
+            'id', 'modulo', 'codigo_evento', 'nivel_severidad',
+            'tipo_actividad', 'tipo_actividad_nombre',
+            'usuario', 'usuario_nombre', 'usuario_rol',
+            'cliente', 'cliente_nombre',
+            'prestamo', 'pago', 'codigo_comprobante', 'fondo',
+            'direccion_ip', 'agente_usuario',
+            'datos_anteriores', 'datos_nuevos', 'diferencial_cambios',
+            'observaciones', 'creado_en'
+        ]
+        read_only_fields = fields

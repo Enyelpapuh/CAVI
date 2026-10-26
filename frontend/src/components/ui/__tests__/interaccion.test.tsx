@@ -1,3 +1,4 @@
+import { useState } from 'preact/hooks';
 import { render, screen, fireEvent, act } from '@testing-library/preact';
 import { describe, it, expect, vi } from 'vitest';
 import { ToastProvider, useToast } from '../Toast';
@@ -56,6 +57,26 @@ describe('Modal', () => {
       fireEvent.keyDown(document, { key: 'Escape' });
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('no desenfoca los inputs al escribir dentro de un modal', () => {
+    function ModalConForm() {
+      const [nombre, setNombre] = useState('');
+      return (
+        <Modal open onClose={() => {}} title="Usuario">
+          <Input label="Nombre Completo" value={nombre} onInput={setNombre} />
+        </Modal>
+      );
+    }
+
+    render(<ModalConForm />);
+    const input = screen.getByLabelText('Nombre Completo') as HTMLInputElement;
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.input(input, { target: { value: 'A' } });
+    expect(input.value).toBe('A');
+    expect(document.activeElement).toBe(input);
   });
 });
 

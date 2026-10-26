@@ -71,11 +71,13 @@ def entero_a_letras(n: int) -> str:
 
 
 def numero_a_letras(monto) -> str:
-    """Importe con centavos en español: 'cincuenta mil 00/100'."""
+    """Importe con enteros y centavos expresados en palabras: 'cincuenta mil con cero centavos (00/100)'."""
     valor = Decimal(str(monto)).quantize(Decimal('0.01'))
     entero = int(valor)
     centavos = int((valor - entero) * 100)
-    return f'{entero_a_letras(entero)} {centavos:02d}/100'
+    centavos_letras = 'un' if centavos == 1 else entero_a_letras(centavos)
+    plural_centavos = 'centavo' if centavos == 1 else 'centavos'
+    return f'{entero_a_letras(entero)} con {centavos_letras} {plural_centavos} ({centavos:02d}/100)'
 
 
 def _moneda(monto) -> str:
@@ -100,24 +102,40 @@ def contexto_pagare(prestamo, usados_por: str = ''):
 
     proyeccion = generar_proyeccion(prestamo)
     cuota = proyeccion['periodos'][0]['cuota'] if proyeccion['periodos'] else Decimal('0.00')
+    fecha_vencimiento = (
+        proyeccion['periodos'][-1]['fecha_vencimiento']
+        if proyeccion['periodos']
+        else prestamo.fecha_primer_corte
+    )
     periodicidad = VARIANTES.get(prestamo.periodicidad, prestamo.periodicidad.lower())
+
+    anio = getattr(prestamo.fecha_desembolso, 'year', timezone.localdate().year)
+    numero_documento = f'CAVI-PAG-{anio}-{prestamo.id:05d}'
+    codigo_seguridad = f'{(prestamo.id * 7919) % 65536:04X}-{(int(prestamo.monto_principal) * 104729) % 65536:04X}'
+
+    f_desembolso = prestamo.fecha_desembolso
+    fecha_emision_str = f_desembolso.strftime('%d/%m/%Y') if hasattr(f_desembolso, 'strftime') else str(f_desembolso)
+    fecha_venc_str = fecha_vencimiento.strftime('%d/%m/%Y') if hasattr(fecha_vencimiento, 'strftime') else str(fecha_vencimiento)
 
     return {
         'prestamo': prestamo,
         'cliente': prestamo.cliente,
         'proyeccion': proyeccion,
-        'numero_documento': f'CAVI-PAG-{prestamo.id:06d}',
+        'numero_documento': numero_documento,
+        'codigo_seguridad': codigo_seguridad,
         'lugar': 'Managua, República de Nicaragua',
-        'fecha_emision': timezone.localdate().strftime('%d/%m/%Y'),
+        'fecha_emision': fecha_emision_str,
+        'fecha_vencimiento': fecha_venc_str,
         'fecha_generacion': timezone.localtime().strftime('%d/%m/%Y %H:%M'),
         'monto_total_texto': _moneda(prestamo.monto_principal),
         'monto_letras': numero_a_letras(prestamo.monto_principal),
-        'plazo_texto': f'{prestamo.plazo_meses} meses',
+        'plazo_texto': f'{prestamo.plazo_meses} meses' if prestamo.plazo_meses > 0 else 'Plazo Indefinido',
         'periodicidad_texto': periodicidad,
         'tasa_interes_texto': _porcentaje(prestamo.tasa_interes),
         'tasa_mora_texto': _porcentaje(tasa_mora_mensual(prestamo)),
         'cuota_texto': _moneda(cuota),
         'dias_gracia': DIAS_GRACIA,
+        'acreedor_institucion': 'CAVI - Control y Administración de Valores e Inversiones',
         'usados_por': usados_por or 'Administración',
         'variante_pdf': VARIANTE_PDF_A if es_pdf_a() else motor_descripcion(),
     }

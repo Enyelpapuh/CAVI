@@ -1,10 +1,11 @@
-import { useState } from 'preact/hooks';
+import { useId } from 'preact/hooks';
 import type { ComponentChildren, JSX } from 'preact';
 
 const CONTROL =
   'h-[38px] w-full rounded-md border border-slate-300 bg-white px-3 text-body-md text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-green-600 focus:ring-1 focus:ring-green-600 disabled:bg-slate-50 disabled:text-slate-400';
 
 interface CampoProps {
+  id?: string;
   label: string;
   children: (props: { id: string; 'aria-describedby'?: string; 'aria-invalid'?: boolean }) => ComponentChildren;
   error?: string;
@@ -13,8 +14,9 @@ interface CampoProps {
   class?: string;
 }
 
-export function Campo({ label, children, error, hint, required = false, class: className = '' }: CampoProps) {
-  const [id] = useState(() => `field-${Math.random().toString(36).substring(2, 9)}`);
+export function Campo({ id: propId, label, children, error, hint, required = false, class: className = '' }: CampoProps) {
+  const autoId = useId();
+  const id = propId || `field-${autoId}`;
   const ayudaId = error || hint ? `${id}-ayuda` : undefined;
 
   return (
@@ -38,6 +40,7 @@ export function Campo({ label, children, error, hint, required = false, class: c
 }
 
 interface InputProps {
+  id?: string;
   label: string;
   value: string;
   onInput: (value: string) => void;
@@ -57,6 +60,7 @@ interface InputProps {
 }
 
 export function Input({
+  id,
   label,
   value,
   onInput,
@@ -75,7 +79,7 @@ export function Input({
   ...rest
 }: InputProps) {
   return (
-    <Campo label={label} error={error} hint={hint} required={required} class={className}>
+    <Campo id={id} label={label} error={error} hint={hint} required={required} class={className}>
       {(aria) =>
         prefix ? (
           <div class="flex h-[38px] items-stretch overflow-hidden rounded-md border border-slate-300 bg-white focus-within:border-green-600 focus-within:ring-1 focus-within:ring-green-600">
@@ -86,7 +90,7 @@ export function Input({
               {...aria}
               {...rest}
               type={type}
-              value={value}
+              value={value ?? ''}
               step={step}
               min={min}
               max={max}
@@ -101,7 +105,7 @@ export function Input({
             {...aria}
             {...rest}
             type={type}
-            value={value}
+            value={value ?? ''}
             step={step}
             min={min}
             max={max}
@@ -117,6 +121,7 @@ export function Input({
 }
 
 interface SelectProps {
+  id?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -130,6 +135,7 @@ interface SelectProps {
 }
 
 export function Select({
+  id,
   label,
   value,
   onChange,
@@ -142,12 +148,12 @@ export function Select({
   ...rest
 }: SelectProps) {
   return (
-    <Campo label={label} error={error} hint={hint} required={required} class={className}>
+    <Campo id={id} label={label} error={error} hint={hint} required={required} class={className}>
       {(aria) => (
         <select
           {...aria}
           {...rest}
-          value={value}
+          value={value ?? ''}
           disabled={disabled}
           onChange={(event) => onChange((event.currentTarget as HTMLSelectElement).value)}
           class={`${CONTROL} appearance-none bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2364748b%22 stroke-width=%222%22><path d=%22M6 9l6 6 6-6%22/></svg>')] bg-[length:16px] bg-[right_0.75rem_center] bg-no-repeat pr-9`}
@@ -164,6 +170,7 @@ export function Select({
 }
 
 interface TextareaProps {
+  id?: string;
   label: string;
   value: string;
   onInput: (value: string) => void;
@@ -177,6 +184,7 @@ interface TextareaProps {
 }
 
 export function Textarea({
+  id,
   label,
   value,
   onInput,
@@ -189,13 +197,13 @@ export function Textarea({
   ...rest
 }: TextareaProps) {
   return (
-    <Campo label={label} error={error} hint={hint} required={required} class={className}>
+    <Campo id={id} label={label} error={error} hint={hint} required={required} class={className}>
       {(aria) => (
         <textarea
           {...aria}
           {...rest}
           rows={rows}
-          value={value}
+          value={value ?? ''}
           placeholder={placeholder}
           onInput={(event) => onInput((event.currentTarget as HTMLTextAreaElement).value)}
           class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-body-md text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-green-600 focus:ring-1 focus:ring-green-600"

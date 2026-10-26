@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext, useState, useEffect } from 'preact/hooks';
+import { useContext, useState, useEffect, useMemo } from 'preact/hooks';
 
 interface RouterContextType {
   path: string;
@@ -45,5 +45,18 @@ export function RouterProvider({ children }: { children: any }) {
 }
 
 export function useRouter() {
-  return useContext(RouterContext);
+  const ctx = useContext(RouterContext);
+  const rawPath = ctx.path || '/';
+  const [pathname, search = ''] = rawPath.split('?');
+  const queryParams = useMemo(() => new URLSearchParams(search), [search]);
+  return useMemo(
+    () => ({
+      ...ctx,
+      pathname: pathname || '/',
+      queryParams,
+      search,
+    }),
+    [ctx.path, ctx.navigate, ctx.goBack, pathname, search, queryParams]
+  );
 }
+

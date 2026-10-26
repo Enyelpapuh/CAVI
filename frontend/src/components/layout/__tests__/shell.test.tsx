@@ -60,11 +60,10 @@ describe('Sidebar', () => {
 });
 
 describe('Topbar', () => {
-  it('muestra el titulo de la pagina, el estado del servidor y el rol', () => {
+  it('muestra el titulo de la pagina y el subtítulo del sistema', () => {
     render(conToast(<Topbar titulo="Abonos y Cobranza" onAbrirMenu={vi.fn()} />));
     expect(screen.getByText('Abonos y Cobranza')).toBeInTheDocument();
-    expect(screen.getByText(/Servidor en Línea/)).toBeInTheDocument();
-    expect(screen.getByText('Administrador')).toBeInTheDocument();
+    expect(screen.getByText('/ CAVI Microcréditos')).toBeInTheDocument();
   });
 });
 

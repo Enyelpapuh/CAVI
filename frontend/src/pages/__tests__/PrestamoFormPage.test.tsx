@@ -9,6 +9,7 @@ vi.mock('../../services/api', () => ({
     list: vi.fn(),
   },
   prestamoService: {
+    list: vi.fn(),
     create: vi.fn(),
     pagarPagare: vi.fn(),
     abrirPagareHtml: vi.fn(),
@@ -53,6 +54,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   (fondoService.list as any).mockResolvedValue({ results: FONDOS });
   (prestamoService.simular as any).mockResolvedValue(SIMULACION);
+  (prestamoService.list as any).mockResolvedValue({ results: [] });
 });
 
 describe('PrestamoFormPage (Formulario por Páginas)', () => {
@@ -162,8 +164,8 @@ describe('PrestamoFormPage (Formulario por Páginas)', () => {
     });
 
     const pis = screen.getAllByLabelText(/% Pi/) as HTMLInputElement[];
-    expect(pis[0].value).toBe('0.5000');
-    expect(pis[1].value).toBe('0.5000');
+    expect(pis[0].value).toBe('50.00');
+    expect(pis[1].value).toBe('50.00');
 
     expect(screen.getByText('1.0000')).toBeInTheDocument();
   });
@@ -229,12 +231,10 @@ describe('PrestamoFormPage (Formulario por Páginas)', () => {
     await waitFor(() => expect(screen.getByText(/Préstamo #1 creado exitosamente/)).toBeInTheDocument());
     expect(screen.getByTestId('pagare-1')).toBeInTheDocument();
 
-    (prestamoService.pagarPagare as any).mockResolvedValue({
-      blob: new Blob(['%PDF']),
-      nombre: 'Pagare-001-111222-3.pdf',
-      variante: 'PDF/A-2b',
-    });
+    (prestamoService.abrirPagareHtml as any).mockResolvedValue('<html>PAGARE</html>');
+    const ventana = { document: { write: vi.fn(), close: vi.fn() }, focus: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(ventana as unknown as Window);
     fireEvent.click(screen.getByTestId('pagare-1'));
-    await waitFor(() => expect(prestamoService.pagarPagare).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(prestamoService.abrirPagareHtml).toHaveBeenCalledWith(1));
   });
 });

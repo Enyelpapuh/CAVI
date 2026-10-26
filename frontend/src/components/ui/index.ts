@@ -12,3 +12,5 @@ export { Modal } from './Modal';
 export { Spinner } from './Spinner';
 export { StatusBadge } from './StatusBadge';
 export { ToastProvider, useToast } from './Toast';
+export { ConfirmModal } from './ConfirmModal';
+export type { ConfirmModalProps } from './ConfirmModal';

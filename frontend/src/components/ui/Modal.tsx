@@ -34,23 +34,40 @@ export function Modal({
   children,
 }: ModalProps) {
   const cerrarRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') onCloseRef.current?.();
     };
     const overflowAnterior = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', onKeyDown);
-    cerrarRef.current?.focus();
+
+    // Initial focus on open: only once when the modal opens and no input inside is already focused
+    const timer = setTimeout(() => {
+      if (modalRef.current && !modalRef.current.contains(document.activeElement)) {
+        const primerInput = modalRef.current.querySelector<HTMLElement>(
+          'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])'
+        );
+        if (primerInput) {
+          primerInput.focus();
+        } else {
+          cerrarRef.current?.focus();
+        }
+      }
+    }, 30);
 
     return () => {
+      clearTimeout(timer);
       document.body.style.overflow = overflowAnterior;
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -58,11 +75,12 @@ export function Modal({
     <div class="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-6">
       <div
         class="absolute inset-0"
-        onClick={onClose}
+        onClick={() => onCloseRef.current?.()}
         data-testid="modal-backdrop"
         aria-hidden="true"
       />
       <div
+        ref={modalRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}

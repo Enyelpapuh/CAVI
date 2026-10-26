@@ -41,6 +41,8 @@ export type IconName =
   | 'person'
   | 'person_add'
   | 'person_off'
+  | 'people'
+  | 'post_add'
   | 'phone'
   | 'phone_iphone'
   | 'point_of_sale'
@@ -64,4 +66,14 @@ export type IconName =
   | 'verified_user'
   | 'visibility'
   | 'warning'
-  | 'wifi';
+  | 'wifi'
+  | 'analytics'
+  | 'cancel'
+  | 'expand_less'
+  | 'receipt'
+  | 'refresh'
+  | 'history'
+  | 'compare_arrows'
+  | 'person_search'
+  | 'visibility_off';
+

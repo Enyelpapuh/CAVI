@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PagoRecibo } from '../components/PagoRecibo';
-import { KpiTile, Button, Icon, Input, Select, Modal, Spinner, EmptyState, StatusBadge } from '../components/ui';
-import { prestamoService, dashboardService } from '../services/api';
+import { KpiTile, Button, Icon, Input, Select, Modal, Spinner, EmptyState, StatusBadge, useToast } from '../components/ui';
+import { prestamoService, dashboardService, catalogoService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { fmtMonto, fmtCantidad, fmtPorcentaje, fmtFecha, iniciales } from '../lib/format';
-import type { CarteraFila, CajaCobrador, AgendaCobrador, PreviewPago, Pago } from '../types';
+import type { CarteraFila, CajaCobrador, AgendaCobrador, PreviewPago, Pago, CatBanco } from '../types';
 
 type Filtro = 'TODOS' | 'EN_FECHA' | 'PASADOS';
 
@@ -28,7 +28,7 @@ const BANCOS_NICARAGUA = [
 ];
 
 /** Desglose de prelación del Art. 3180 que devuelve el preview del backend. */
-function Prelacion({ preview }: { preview: PreviewPago }) {
+function Prelacion({ preview, esCobranza }: { preview: PreviewPago; esCobranza?: boolean }) {
   const filas: [string, string, string?][] = [
     ['Mora', preview.aplicacion_mora],
     ['Interés corriente', preview.aplicacion_interes],
@@ -53,6 +53,23 @@ function Prelacion({ preview }: { preview: PreviewPago }) {
           <dd class="tnum font-bold text-slate-900">{fmtMonto(preview.deuda_tras_pago)}</dd>
         </div>
       </dl>
+
+      {!esCobranza && Number(preview.aplicacion_interes) > 0 && (
+        <div class="mt-3 pt-2.5 border-t border-dashed border-slate-300 text-xs">
+          <span class="font-bold text-slate-600 uppercase tracking-wide block mb-1">
+            Distribución de Rendimientos (Ley N° 977 · 50/50)
+          </span>
+          <div class="flex justify-between text-slate-600 py-0.5">
+            <span>Interés a Bolsas Inversoras (50%):</span>
+            <span class="font-bold text-emerald-700">{fmtMonto(preview.interes_fondos)}</span>
+          </div>
+          <div class="flex justify-between text-slate-600 py-0.5">
+            <span>Interés Administración CAVI (50%):</span>
+            <span class="font-bold text-slate-800">{fmtMonto(preview.interes_administracion)}</span>
+          </div>
+        </div>
+      )}
+
       {Number(preview.exceso_no_aplicado) > 0 && (
         <p class="mt-2 text-body-sm text-amber-700">
           El excedente se devuelve al cliente: el pago no puede rebasar la deuda total.
@@ -61,8 +78,8 @@ function Prelacion({ preview }: { preview: PreviewPago }) {
       {preview.detalle_mora && preview.detalle_mora.dias_mora > 0 && (
         <p class="mt-2 text-body-sm text-red-700">
           Mora de {preview.detalle_mora.dias_mora} dias fuera de gracia al{' '}
-          {fmtPorcentaje(Number(preview.detalle_mora.tasa_mora_mensual) * 100, 2)} mensual
-          (Art. 3184). Se cobra antes que el interes.
+          {fmtPorcentaje(Number(preview.detalle_mora.tasa_mora_mensual) * 100, 2)} mensual.
+          Se cobra antes que el interes.
         </p>
       )}
     </div>
@@ -72,6 +89,7 @@ function Prelacion({ preview }: { preview: PreviewPago }) {
 export function CobrosPage() {
   const { user } = useAuth();
   const esCobranza = user?.rol === 'COBRANZA';
+  const toast = useToast();
 
   const [agenda, setAgenda] = useState<AgendaCobrador | null>(null);
   const [caja, setCaja] = useState<CajaCobrador | null>(null);
@@ -93,6 +111,26 @@ export function CobrosPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorCobro, setErrorCobro] = useState('');
   const [pago, setPago] = useState<Pago | null>(null);
+  const [bancosLista, setBancosLista] = useState<CatBanco[]>([]);
+
+  useEffect(() => {
+    catalogoService
+      .bancos()
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setBancosLista(data);
+          setBanco(data[0].nombre);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const opcionesBancos = useMemo(() => {
+    if (bancosLista.length > 0) {
+      return bancosLista.map((b) => ({ value: b.nombre, label: b.nombre }));
+    }
+    return BANCOS_NICARAGUA;
+  }, [bancosLista]);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -152,7 +190,7 @@ export function CobrosPage() {
       errores.push('Ingrese un monto mayor a cero');
     } else if (minimoCiclo > 0 && montoNum < minimoCiclo) {
       errores.push(
-        `El pago mínimo aceptado es el interés del ciclo (${fmtMonto(minimoCiclo)}). Art. 3180 del Código Civil.`
+        `El pago mínimo aceptado es el interés del ciclo (${fmtMonto(minimoCiclo)}).`
       );
     }
     if (!fechaPago) errores.push('Indique la fecha del pago');
@@ -199,11 +237,11 @@ export function CobrosPage() {
     setErrorCobro('');
   };
 
-  const cerrar = () => {
+  const cerrar = useCallback(() => {
     setSeleccion(null);
     setPreview(null);
     setErrorCobro('');
-  };
+  }, []);
 
   const registrarPago = async () => {
     if (!seleccion || validacion.length > 0) return;
@@ -215,20 +253,32 @@ export function CobrosPage() {
           ? (banco ? `${banco} · Ref: ${referencia.trim()}${titular.trim() ? ` · Titular: ${titular.trim()}` : ''}` : referencia.trim())
           : referencia.trim();
 
+      const bancoObj = bancosLista.find((b) => b.nombre === banco || String(b.id) === banco);
+      const cambioMonto =
+        Number(recibidoEfectivo) > montoNum && montoNum > 0
+          ? (Number(recibidoEfectivo) - montoNum).toFixed(2)
+          : undefined;
+
       const creado = await prestamoService.pagar(seleccion.id, {
         monto,
         fecha_pago: fechaPago,
         metodo_pago: metodoPago,
+        banco_id: bancoObj?.id,
         referencia_bancaria: refFinal,
+        efectivo_recibido: metodoPago === 'EFECTIVO' && recibidoEfectivo ? recibidoEfectivo : undefined,
+        cambio_devuelto: metodoPago === 'EFECTIVO' ? cambioMonto : undefined,
       });
       setPago(creado);
       setSeleccion(null);
+      toast.success(`Abono por ${fmtMonto(monto)} registrado exitosamente.`);
       await cargar();
     } catch (err: any) {
       const data = err.response?.data;
-      if (data?.monto) setErrorCobro((data.monto as string[]).join(' '));
-      else if (data?.detail) setErrorCobro(String(data.detail));
-      else setErrorCobro('No se pudo registrar el cobro');
+      let msg = 'No se pudo registrar el cobro';
+      if (data?.monto) msg = (data.monto as string[]).join(' ');
+      else if (data?.detail) msg = String(data.detail);
+      setErrorCobro(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -246,7 +296,7 @@ export function CobrosPage() {
     <Layout titulo="Abonos y Cobranza">
       <PageHeader
         titulo="Abonos y Cobranza"
-        descripcion="Agenda de recaudación y consulta de créditos en fecha vs. pasados (Art. 3180 C.C.)"
+        descripcion="Agenda de recaudación y consulta de créditos en fecha vs. pasados"
         actions={
           <Button variant="secondary" icon="sync" onClick={cargar} loading={loading}>
             Actualizar
@@ -300,7 +350,7 @@ export function CobrosPage() {
       {esCobranza && (
         <p class="mt-3 flex items-center gap-2 text-body-sm text-slate-500">
           <Icon name="lock" size={16} />
-          Vista restringida por privacidad (Ley 787): no incluye utilidades ni origen de los fondos.
+          Vista restringida por privacidad: no incluye utilidades ni origen de los fondos.
         </p>
       )}
 
@@ -598,36 +648,79 @@ export function CobrosPage() {
                 </span>
               </div>
 
-              {/* Botones de sugerencias a un toque */}
-              <div class="flex flex-wrap gap-2">
-                {Number(seleccion.cuota) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setMonto(String(Number(seleccion.cuota)))}
-                    class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
-                  >
-                    + Pagar Cuota ({fmtMonto(seleccion.cuota)})
-                  </button>
-                )}
-                {Number(seleccion.mora_pendiente) > 0 && Number(seleccion.cuota) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setMonto(String(Number(seleccion.cuota) + Number(seleccion.mora_pendiente)))}
-                    class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
-                  >
-                    + Mora y Cuota ({fmtMonto(Number(seleccion.cuota) + Number(seleccion.mora_pendiente))})
-                  </button>
-                )}
-                {Number(seleccion.saldo_deudor) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setMonto(String(Number(seleccion.saldo_deudor)))}
-                    class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
-                  >
-                    + Liquidar Total ({fmtMonto(seleccion.saldo_deudor)})
-                  </button>
-                )}
+              {/* Botones de sugerencias y adelanto de pago a un toque */}
+              <div class="space-y-1.5">
+                <span class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  Opciones y Adelanto de Pago:
+                </span>
+                <div class="flex flex-wrap gap-2">
+                  {Number(seleccion.cuota) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setMonto(String(Number(seleccion.cuota)))}
+                      class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
+                    >
+                      + Pagar Cuota ({fmtMonto(seleccion.cuota)})
+                    </button>
+                  )}
+                  {Number(seleccion.mora_pendiente) > 0 && Number(seleccion.cuota) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setMonto(String(Number(seleccion.cuota) + Number(seleccion.mora_pendiente)))}
+                      class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
+                    >
+                      + Mora y Cuota ({fmtMonto(Number(seleccion.cuota) + Number(seleccion.mora_pendiente))})
+                    </button>
+                  )}
+                  {/* Adelanto de Cuotas Futuras */}
+                  {Number(seleccion.cuota) > 0 && Number(seleccion.saldo_deudor) >= Number(seleccion.cuota) * 2 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const m = (Number(seleccion.cuota) * 2) + Number(seleccion.mora_pendiente || 0);
+                        setMonto(String(Math.min(m, Number(seleccion.saldo_deudor))));
+                      }}
+                      class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-800 transition hover:bg-blue-100 flex items-center gap-1"
+                    >
+                      <Icon name="paid" size={14} class="text-blue-600" />
+                      + Adelantar 2 Cuotas ({fmtMonto(Math.min((Number(seleccion.cuota) * 2) + Number(seleccion.mora_pendiente || 0), Number(seleccion.saldo_deudor)))})
+                    </button>
+                  )}
+                  {Number(seleccion.cuota) > 0 && Number(seleccion.saldo_deudor) >= Number(seleccion.cuota) * 3 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const m = (Number(seleccion.cuota) * 3) + Number(seleccion.mora_pendiente || 0);
+                        setMonto(String(Math.min(m, Number(seleccion.saldo_deudor))));
+                      }}
+                      class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-800 transition hover:bg-indigo-100 flex items-center gap-1"
+                    >
+                      <Icon name="paid" size={14} class="text-indigo-600" />
+                      + Adelantar 3 Cuotas ({fmtMonto(Math.min((Number(seleccion.cuota) * 3) + Number(seleccion.mora_pendiente || 0), Number(seleccion.saldo_deudor)))})
+                    </button>
+                  )}
+                  {Number(seleccion.saldo_deudor) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setMonto(String(Number(seleccion.saldo_deudor)))}
+                      class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      + Liquidar Total ({fmtMonto(seleccion.saldo_deudor)})
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Aviso explicativo de amortización anticipada cuando se adelantan pagos */}
+              {montoNum > (Number(seleccion.cuota) + Number(seleccion.mora_pendiente || 0)) && (
+                <div class="rounded-lg bg-blue-50/80 border border-blue-200 p-2.5 text-xs text-blue-900 flex items-start gap-2">
+                  <Icon name="trending_up" size={16} class="text-blue-700 shrink-0 mt-0.5" />
+                  <div>
+                    <span class="font-bold">Adelanto de Cuotas / Abono a Capital Activo:</span>{' '}
+                    El excedente de C$ {(montoNum - Number(seleccion.cuota) - Number(seleccion.mora_pendiente || 0)).toFixed(2)} amortiza directamente el saldo de capital principal (Art. 3180 del Código Civil), reduciendo la base de cálculo de intereses en los ciclos siguientes.
+                  </div>
+                </div>
+              )}
 
               <div class="grid gap-3 sm:grid-cols-2 pt-1">
                 <Input
@@ -694,7 +787,7 @@ export function CobrosPage() {
                     label="Banco receptor"
                     value={banco}
                     onChange={setBanco}
-                    options={BANCOS_NICARAGUA}
+                    options={opcionesBancos}
                     required
                   />
                   <Input
@@ -723,7 +816,7 @@ export function CobrosPage() {
               </p>
             )}
 
-            {preview && !previewCargando && <Prelacion preview={preview} />}
+            {preview && !previewCargando && <Prelacion preview={preview} esCobranza={esCobranza} />}
 
             {validacion.map((mensaje) => (
               <p key={mensaje} class="flex items-start gap-2 text-body-sm text-red-600">
@@ -747,7 +840,7 @@ export function CobrosPage() {
             )}
 
             <p class="text-body-sm text-slate-500">
-              Art. 3180 C.C.: el pago se imputa en orden estricto: mora, luego intereses corrientes y finalmente capital insoluto.
+              El pago se imputa en orden estricto: mora acumulada, intereses corrientes y finalmente capital insoluto.
             </p>
           </div>
         )}

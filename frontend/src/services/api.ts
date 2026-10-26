@@ -14,6 +14,14 @@ import type {
   CajaCobrador,
   AgendaCobrador,
   ConfiguracionSistema,
+  CatBanco,
+  CatActividadEconomica,
+  CatDepartamento,
+  CatMunicipio,
+  PermisosResponse,
+  SesionCaja,
+  BitacoraActividad,
+  AuditoriaResumen,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -61,7 +69,10 @@ api.interceptors.response.use(
   async (error: AxiosError<ApiError>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const requestUrl = originalRequest?.url || '';
+    const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/refresh');
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -102,7 +113,9 @@ api.interceptors.response.use(
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
-        window.location.href = '/login';
+        if (window.location.hash !== '#/login') {
+          window.location.hash = '/login';
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -175,6 +188,11 @@ export const clienteService = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/clientes/${id}/`);
   },
+
+  prestamos: async (id: number): Promise<Prestamo[]> => {
+    const response = await api.get(`/clientes/${id}/prestamos/`);
+    return response.data;
+  },
 };
 
 // Fondo endpoints
@@ -184,8 +202,15 @@ export const fondoService = {
     return response.data;
   },
 
-  create: async (data: { nombre: string; familiar: string; capital_inicial: string; activo?: boolean }): Promise<Fondo> => {
+  create: async (
+    data: Partial<Fondo> & { nombre: string; capital_inicial: string }
+  ): Promise<Fondo> => {
     const response = await api.post('/fondos/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: Partial<Fondo>): Promise<Fondo> => {
+    const response = await api.patch(`/fondos/${id}/`, data);
     return response.data;
   },
 
@@ -217,7 +242,7 @@ export const fondoService = {
 
 // Prestamo endpoints
 export const prestamoService = {
-  list: async (params?: { search?: string; page?: number; estado?: string }) => {
+  list: async (params?: { search?: string; page?: number; estado?: string; cliente?: number }) => {
     const response = await api.get('/prestamos/', { params });
     return response.data;
   },
@@ -270,7 +295,10 @@ export const prestamoService = {
       monto: string;
       fecha_pago: string;
       metodo_pago: string;
+      banco_id?: number;
       referencia_bancaria?: string;
+      efectivo_recibido?: string;
+      cambio_devuelto?: string;
     }
   ): Promise<Pago> => {
     const response = await api.post(`/prestamos/${id}/pagos/`, data);
@@ -302,17 +330,64 @@ export const prestamoService = {
     });
     return response.data as string;
   },
+
+  /** Cancela y revierte un contrato de préstamo dentro de la ventana de tolerancia (72h). */
+  cancelar: async (id: number, motivo: string): Promise<{ mensaje: string; prestamo: Prestamo }> => {
+    const response = await api.post(`/prestamos/${id}/cancelar/`, { motivo });
+    return response.data;
+  },
 };
 
 // Pago endpoints
 export const pagoService = {
-  list: async (params?: { page?: number; prestamo?: number; cliente?: number; fecha?: string; usuario?: number }) => {
+  list: async (params?: { page?: number; prestamo?: number; cliente?: number; fecha?: string; usuario?: number; estado?: string }) => {
     const response = await api.get('/pagos/', { params });
     return response.data;
   },
 
   getRecibo: async (id: number): Promise<Pago> => {
     const response = await api.get(`/pagos/${id}/`);
+    return response.data;
+  },
+
+  anular: async (id: number, motivo: string): Promise<{ mensaje: string; recibo: Pago }> => {
+    const response = await api.post(`/pagos/${id}/anular/`, { motivo });
+    return response.data;
+  },
+
+  /** Abre el recibo oficial en HTML en una nueva pestaña para su impresión con formato institucional. */
+  abrirReciboHtml: async (id: number): Promise<string> => {
+    const response = await api.get(`/pagos/${id}/recibo_html/`, {
+      responseType: 'text',
+    });
+    return response.data as string;
+  },
+};
+
+// Auditoria endpoints
+export const auditoriaService = {
+  list: async (params?: {
+    modulo?: string;
+    severidad?: string;
+    evento?: string;
+    usuario?: number;
+    cliente?: number;
+    fecha_desde?: string;
+    fecha_hasta?: string;
+    search?: string;
+    page?: number;
+  }): Promise<{ count: number; next: string | null; previous: string | null; results: BitacoraActividad[] } | BitacoraActividad[]> => {
+    const response = await api.get('/auditoria/', { params });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<BitacoraActividad> => {
+    const response = await api.get(`/auditoria/${id}/`);
+    return response.data;
+  },
+
+  resumen: async (): Promise<AuditoriaResumen> => {
+    const response = await api.get('/auditoria/resumen/');
     return response.data;
   },
 };
@@ -347,6 +422,69 @@ export const configuracionService = {
 
   update: async (data: Partial<ConfiguracionSistema>): Promise<ConfiguracionSistema> => {
     const response = await api.post('/configuracion/', data);
+    return response.data;
+  },
+};
+
+// Catalogo endpoints
+export const catalogoService = {
+  getTodos: async () => {
+    const response = await api.get('/catalogos/');
+    return response.data;
+  },
+  bancos: async (): Promise<CatBanco[]> => {
+    const response = await api.get<CatBanco[]>('/catalogos/bancos/');
+    return response.data;
+  },
+  actividades: async (): Promise<CatActividadEconomica[]> => {
+    const response = await api.get<CatActividadEconomica[]>('/catalogos/actividades/');
+    return response.data;
+  },
+  departamentos: async (): Promise<CatDepartamento[]> => {
+    const response = await api.get<CatDepartamento[]>('/catalogos/departamentos/');
+    return response.data;
+  },
+  municipios: async (departamentoId?: number): Promise<CatMunicipio[]> => {
+    const response = await api.get<CatMunicipio[]>('/catalogos/municipios/', {
+      params: departamentoId ? { departamento: departamentoId } : undefined,
+    });
+    return response.data;
+  },
+};
+
+// Permisos endpoints
+export const permisoService = {
+  getMatriz: async (): Promise<PermisosResponse> => {
+    const response = await api.get<PermisosResponse>('/permisos/');
+    return response.data;
+  },
+  actualizar: async (data: {
+    rol: string;
+    permiso_codigo?: string;
+    permiso_id?: number;
+    activo: boolean;
+  }) => {
+    const response = await api.post('/permisos/', data);
+    return response.data;
+  },
+};
+
+// Caja endpoints
+export const cajaService = {
+  activa: async (): Promise<{ activa: boolean; sesion: SesionCaja | null }> => {
+    const response = await api.get('/cajas/activa/');
+    return response.data;
+  },
+  apertura: async (data: { saldo_inicial_efectivo: string; observaciones?: string }): Promise<SesionCaja> => {
+    const response = await api.post('/cajas/apertura/', data);
+    return response.data;
+  },
+  cierre: async (id: number, data: { efectivo_declarado: string; observaciones?: string }): Promise<SesionCaja> => {
+    const response = await api.post(`/cajas/${id}/cierre/`, data);
+    return response.data;
+  },
+  list: async () => {
+    const response = await api.get('/cajas/');
     return response.data;
   },
 };

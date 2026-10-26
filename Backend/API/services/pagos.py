@@ -12,13 +12,18 @@ Reglas de negocio:
 - La mora se genera por días vencidos fuera de gracia (`services/mora.py`) y se
   imputa antes que el interés corriente, sin capitalizar intereses (Ley 176).
 """
+import hashlib
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
+from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from ..models import (
+    ConfiguracionSistema,
     GananciaAdministracion,
     MovimientoFondo,
     Pago,
@@ -26,7 +31,15 @@ from ..models import (
     Prestamo,
 )
 from .amortizacion import generar_proyeccion, validar_tasa
+from .auditoria import registrar_auditoria
 from .mora import actualizar_mora_prestamo, detalle_mora, estado_por_mora, mora_pendiente
+
+
+def generar_codigo_seguridad_pago(pago_id, prestamo_id, monto, fecha_pago):
+    """Calcula un hash SHA-256 de 8 caracteres para verificar la autenticidad física del recibo."""
+    raw = f"{pago_id}|{prestamo_id}|{monto}|{fecha_pago}|{settings.SECRET_KEY}"
+    h = hashlib.sha256(raw.encode('utf-8')).hexdigest()[:8].upper()
+    return f"{h[:4]}-{h[4:]}"
 
 
 def _cantidad(val):
@@ -195,7 +208,18 @@ def simular_pago(prestamo, monto, fecha_pago):
 
 
 @transaction.atomic
-def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_bancaria=''):
+def aplicar_pago(
+    prestamo,
+    monto,
+    fecha_pago,
+    metodo_pago,
+    usuario,
+    referencia_bancaria='',
+    banco=None,
+    sesion_caja=None,
+    efectivo_recibido=None,
+    cambio_devuelto=None
+):
     """Asienta un pago con imputación legal (prelación Art. 3180).
 
     Returns:
@@ -223,11 +247,19 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
     prestamo.refresh_from_db()
     prestamo.saldo_insoluto = calculo['saldo_insoluto_tras_pago']
 
+    if sesion_caja is None and usuario:
+        from API.models import SesionCaja
+        sesion_caja = SesionCaja.objects.filter(usuario=usuario, estado='ABIERTA').first()
+
     pago = Pago(
         prestamo=prestamo,
         monto_total=monto_aplicado,
         fecha_pago=fecha_pago,
         metodo_pago=metodo_pago,
+        banco=banco,
+        sesion_caja=sesion_caja,
+        efectivo_recibido=efectivo_recibido,
+        cambio_devuelto=cambio_devuelto,
         referencia_bancaria=referencia_bancaria or '',
         aplicacion_mora=aplicada_mora,
         aplicacion_interes=aplicada_interes,
@@ -236,10 +268,15 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
     )
     pago.save()
 
-    # Código único de comprobante (Ley 842): PAG-00001
-    codigo = f'PAG-{pago.id:05d}'
-    Pago.objects.filter(pk=pago.pk).update(codigo_comprobante=codigo)
+    # Código único de comprobante correlativo y hash SHA-256 de integridad (Ley 842 / UAF 977)
+    codigo = f'REC-{pago.id:06d}'
+    codigo_seguridad = generar_codigo_seguridad_pago(pago.id, prestamo.id, monto_aplicado, fecha_pago)
+    Pago.objects.filter(pk=pago.pk).update(
+        codigo_comprobante=codigo,
+        codigo_seguridad=codigo_seguridad
+    )
     pago.codigo_comprobante = codigo
+    pago.codigo_seguridad = codigo_seguridad
 
     # ── Liquidación 50/50 (Ley 977) ────────────────────────────────────────
     # Interés corriente pagado → 50% administración, 50% fondos (según Pi).
@@ -278,6 +315,7 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
                 MovimientoFondo.objects.create(
                     fondo=fondo,
                     pago=pago,
+                    usuario=usuario,
                     tipo=MovimientoFondo.TipoMovimiento.GANANCIA,
                     monto=ganancia,
                     saldo_anterior=saldo_anterior,
@@ -288,6 +326,7 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
                 MovimientoFondo.objects.create(
                     fondo=fondo,
                     pago=pago,
+                    usuario=usuario,
                     tipo=MovimientoFondo.TipoMovimiento.REINTEGRO,
                     monto=capital_partida,
                     saldo_anterior=saldo_anterior,
@@ -319,4 +358,204 @@ def aplicar_pago(prestamo, monto, fecha_pago, metodo_pago, usuario, referencia_b
         prestamo.estado = estado_por_mora(prestamo, hoy=fecha_pago)
     prestamo.save(update_fields=['saldo_insoluto', 'estado', 'actualizado_en'])
 
+    # Registro de auditoría del cobro asentado
+    registrar_auditoria(
+        modulo='COBRANZA',
+        codigo_evento='PAG_ASENTADO',
+        nivel_severidad='INFORMATIVO',
+        usuario=usuario,
+        cliente=prestamo.cliente,
+        prestamo=prestamo,
+        pago=pago,
+        datos_nuevos={
+            'codigo_comprobante': codigo,
+            'monto_total': str(monto_aplicado),
+            'metodo_pago': metodo_pago,
+            'aplicacion_capital': str(aplicada_capital),
+            'aplicacion_interes': str(aplicada_interes),
+            'aplicacion_mora': str(aplicada_mora),
+            'saldo_restante': str(prestamo.saldo_insoluto)
+        },
+        observaciones=f"Cobro asentado {codigo} por C$ {monto_aplicado} en préstamo #{prestamo.id} ({prestamo.cliente})."
+    )
+
     return pago, {'exceso_no_aplicado': exceso}
+
+
+@transaction.atomic
+def anular_pago(pago, usuario, motivo, request=None):
+    """Anula un recibo de pago de forma atómica (ACID) y revierte los saldos.
+
+    Reglas de negocio aprobadas:
+    - Exclusivo para usuarios con rol ADMINISTRADOR.
+    - Se requiere justificación obligatoria (mínimo 15 caracteres).
+    - Límite de tiempo: configurado en ConfiguracionSistema (por defecto 72 horas desde creado_en).
+    - Se revierte la amortización de capital en el préstamo (y reactiva el préstamo si estaba CANCELADO).
+    - Se revierten las distribuciones en fondos familiares y se emite MovimientoFondo(REVERSO_PAGO).
+    - Se revierte la ganancia administrativa.
+    - Se registra el evento PAG_ANULADO con severidad CRITICO en BitacoraActividad.
+    """
+    if pago.estado == 'ANULADO':
+        raise serializers.ValidationError({'error': 'El recibo ya fue anulado previamente.'})
+
+    rol_usuario = getattr(usuario, 'rol', None)
+    if rol_usuario != 'ADMINISTRADOR' and not getattr(usuario, 'is_superuser', False):
+        raise PermissionDenied('Solo usuarios con rol Administrador pueden anular recibos de pago.')
+
+    motivo_limpio = (motivo or '').strip()
+    if len(motivo_limpio) < 15:
+        raise serializers.ValidationError({
+            'motivo': 'El motivo de anulación es obligatorio y debe contener al menos 15 caracteres descriptivos.'
+        })
+
+    config = ConfiguracionSistema.get_solo()
+    limite_horas = config.horas_tolerancia_anulacion or 72
+    ahora = timezone.now()
+    horas_transcurridas = (ahora - pago.creado_en).total_seconds() / 3600.0
+    if horas_transcurridas > limite_horas:
+        raise serializers.ValidationError({
+            'error': f'Ha expirado la tolerancia máxima de {limite_horas} horas para anular este recibo (tiempo transcurrido: {int(horas_transcurridas)}h).'
+        })
+
+    prestamo = Prestamo.objects.select_for_update().get(pk=pago.prestamo_id)
+    saldo_anterior_prestamo = prestamo.saldo_insoluto
+
+    # 1. Revertir capital amortizado en el préstamo
+    prestamo.saldo_insoluto = saldo_anterior_prestamo + pago.aplicacion_capital
+
+    # 2. Si el préstamo estaba CANCELADO o requiere ajuste de estado
+    if prestamo.saldo_insoluto > Decimal('0.00'):
+        prestamo.estado = estado_por_mora(prestamo, hoy=timezone.localdate())
+    prestamo.save(update_fields=['saldo_insoluto', 'estado', 'actualizado_en'])
+
+    # 3. Revertir participaciones en fondos familiares
+    detalles = list(pago.fondos_detalle.select_for_update().select_related('fondo').order_by('id'))
+    reversiones_fondos = []
+    for detalle in detalles:
+        fondo = detalle.fondo
+        saldo_antes = fondo.saldo_disponible
+        ganancias_antes = fondo.ganancias_acumuladas
+
+        # Reintegro de capital se resta del saldo disponible del fondo
+        nuevo_saldo = max(Decimal('0.00'), saldo_antes - detalle.capital_reintegrado)
+        # Ganancia se resta de las acumuladas
+        nuevas_ganancias = max(Decimal('0.00'), ganancias_antes - detalle.ganancia)
+
+        fondo.saldo_disponible = nuevo_saldo
+        fondo.ganancias_acumuladas = nuevas_ganancias
+        fondo.save(update_fields=['saldo_disponible', 'ganancias_acumuladas', 'actualizado_en'])
+
+        monto_reverso = detalle.capital_reintegrado + detalle.ganancia
+        MovimientoFondo.objects.create(
+            fondo=fondo,
+            pago=pago,
+            usuario=usuario,
+            tipo=MovimientoFondo.TipoMovimiento.REVERSO_PAGO,
+            monto=monto_reverso,
+            saldo_anterior=saldo_antes,
+            saldo_posterior=nuevo_saldo,
+            descripcion=(
+                f"Anulación de recibo {pago.codigo_comprobante}: se revierte capital de C$ {detalle.capital_reintegrado} "
+                f"y ganancia de C$ {detalle.ganancia}. Motivo: {motivo_limpio}"
+            )
+        )
+        reversiones_fondos.append({
+            'fondo_id': fondo.id,
+            'fondo_nombre': fondo.nombre,
+            'capital_deducido': str(detalle.capital_reintegrado),
+            'ganancia_deducida': str(detalle.ganancia),
+            'saldo_posterior': str(nuevo_saldo)
+        })
+
+    # 4. Revertir ganancia de administración si existía
+    ganancia_admin = GananciaAdministracion.objects.filter(pago=pago).first()
+    monto_admin_revertido = Decimal('0.00')
+    if ganancia_admin:
+        monto_admin_revertido = ganancia_admin.monto
+        ganancia_admin.delete()
+
+    # 5. Marcar pago como ANULADO
+    pago.estado = 'ANULADO'
+    pago.motivo_anulacion = motivo_limpio
+    pago.anulado_en = ahora
+    pago.anulado_por = usuario
+    pago.save(update_fields=['estado', 'motivo_anulacion', 'anulado_en', 'anulado_por'])
+
+    # 6. Registrar en bitácora inmutable con severidad CRITICO
+    registrar_auditoria(
+        modulo='COBRANZA',
+        codigo_evento='PAG_ANULADO',
+        nivel_severidad='CRITICO',
+        usuario=usuario,
+        cliente=prestamo.cliente,
+        prestamo=prestamo,
+        pago=pago,
+        datos_anteriores={
+            'estado': 'VALIDO',
+            'monto_total': str(pago.monto_total),
+            'aplicacion_capital': str(pago.aplicacion_capital),
+            'aplicacion_interes': str(pago.aplicacion_interes),
+            'aplicacion_mora': str(pago.aplicacion_mora),
+            'prestamo_saldo_anterior': str(saldo_anterior_prestamo)
+        },
+        datos_nuevos={
+            'estado': 'ANULADO',
+            'motivo': motivo_limpio,
+            'prestamo_saldo_restablecido': str(prestamo.saldo_insoluto),
+            'prestamo_nuevo_estado': prestamo.estado,
+            'reversiones_fondos': reversiones_fondos,
+            'ganancia_admin_revertida': str(monto_admin_revertido)
+        },
+        observaciones=f"Recibo {pago.codigo_comprobante} ANULADO por C$ {pago.monto_total}. Motivo: {motivo_limpio}",
+        request=request
+    )
+
+    return pago
+
+
+def contexto_recibo(pago, usuario=None):
+    """Construye el contexto para renderizar la plantilla HTML oficial del recibo."""
+    from .pagare import numero_a_letras
+    cliente = pago.prestamo.cliente
+    monto_fmt = f"C${pago.monto_total:,.2f}"
+    monto_letras = numero_a_letras(pago.monto_total)
+
+    es_admin = False
+    if usuario:
+        es_admin = getattr(usuario, 'rol', None) == 'ADMINISTRADOR' or getattr(usuario, 'is_superuser', False)
+
+    fondos_detalle = []
+    if es_admin:
+        fondos_detalle = list(pago.fondos_detalle.select_related('fondo').all())
+
+    codigo_seguridad = (
+        pago.codigo_seguridad
+        or generar_codigo_seguridad_pago(pago.id, pago.prestamo.id, pago.monto_total, pago.fecha_pago)
+    )
+
+    nombre_usuario = ''
+    if usuario and getattr(usuario, 'nombre_completo', None):
+        nombre_usuario = usuario.nombre_completo
+    elif pago.usuario and getattr(pago.usuario, 'nombre_completo', None):
+        nombre_usuario = pago.usuario.nombre_completo
+    else:
+        nombre_usuario = 'Caja CAVI'
+
+    return {
+        'pago': pago,
+        'prestamo': pago.prestamo,
+        'cliente': cliente,
+        'monto_fmt': monto_fmt,
+        'monto_letras': monto_letras,
+        'codigo_seguridad': codigo_seguridad,
+        'fondos_detalle': fondos_detalle,
+        'es_admin': es_admin,
+        'fecha_generacion': timezone.localtime().strftime('%d/%m/%Y %H:%M'),
+        'usuario_nombre': nombre_usuario,
+    }
+
+
+def html_recibo(pago, usuario=None) -> str:
+    """Renderiza el recibo de pago en HTML listo para abrir en nueva pestaña o imprimir."""
+    from django.template.loader import render_to_string
+    return render_to_string('recibo.html', contexto_recibo(pago, usuario))

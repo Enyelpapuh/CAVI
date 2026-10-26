@@ -17,6 +17,9 @@ vi.mock('../../services/api', () => ({
     agenda: vi.fn(),
     caja: vi.fn(),
   },
+  catalogoService: {
+    bancos: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 const useAuth = vi.fn();
@@ -323,7 +326,30 @@ describe('CobrosPage', () => {
     // Verifica los indicadores principales
     expect(screen.getByText('Cobros Hoy')).toBeInTheDocument();
     expect(screen.getByText('Por Cobrar')).toBeInTheDocument();
-    expect(screen.getByText('En Fecha')).toBeInTheDocument();
-    expect(screen.getByText('Pasados')).toBeInTheDocument();
+    expect(screen.getAllByText('En Fecha').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Pasados').length).toBeGreaterThan(0);
+  });
+
+  it('permite adelantar cuotas y muestra aviso de abono a capital', async () => {
+    render(<CobrosPage />);
+    await waitFor(() => screen.getByText('Juan Perez'));
+
+    fireEvent.click(screen.getByTestId('cobrar-1'));
+
+    // Debe mostrar los botones de adelanto de cuotas
+    const btnAdelantar2 = screen.getByRole('button', { name: /\+ Adelantar 2 Cuotas/ });
+    expect(btnAdelantar2).toBeInTheDocument();
+
+    fireEvent.click(btnAdelantar2);
+
+    // Debe haberse actualizado el input de monto al doble de la cuota
+    const inputMonto = screen.getByLabelText(/Monto a cobrar/) as HTMLInputElement;
+    expect(Number(inputMonto.value)).toBeGreaterThan(1845.98);
+
+    // Debe mostrar el banner de amortización anticipada a capital
+    await waitFor(() => {
+      expect(screen.getByText(/Adelanto de Cuotas \/ Abono a Capital Activo/)).toBeInTheDocument();
+    });
   });
 });
+

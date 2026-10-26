@@ -12,9 +12,11 @@ import {
   Select,
   Spinner,
   StatusBadge,
+  useToast,
   type Columna,
 } from '../components/ui';
 import { clienteService, fondoService, prestamoService } from '../services/api';
+import { useRouter } from '../lib/router';
 import { BotonPagare } from '../components/BotonPagare';
 import { fmtMonto, fmtNumero, fmtFecha, iniciales } from '../lib/format';
 import { desglosarCedula, formatearCedula, formatearTelefono } from '../lib/cedula';
@@ -43,6 +45,8 @@ const PRESETS_TASAS = [
 ];
 
 export function PrestamoFormPage() {
+  const toast = useToast();
+  const { navigate } = useRouter();
   const [pasoActual, setPasoActual] = useState<1 | 2 | 3 | 4>(1);
 
   // Paso 1: Cliente
@@ -52,6 +56,8 @@ export function PrestamoFormPage() {
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [clienteLabel, setClienteLabel] = useState('');
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
+  const [historialCliente, setHistorialCliente] = useState<Prestamo[]>([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
 
   // Paso 2: Condiciones
   const [montoPrincipal, setMontoPrincipal] = useState('');
@@ -59,13 +65,18 @@ export function PrestamoFormPage() {
   const [plazoMeses, setPlazoMeses] = useState('12');
   const [esPlazoIndefinido, setEsPlazoIndefinido] = useState(false);
   const [periodicidad, setPeriodicidad] = useState<'MENSUAL' | 'QUINCENAL'>('MENSUAL');
-  const [fechaDesembolso, setFechaDesembolso] = useState('');
-  const [fechaPrimerCorte, setFechaPrimerCorte] = useState('');
+  const [fechaDesembolso, setFechaDesembolso] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fechaPrimerCorte, setFechaPrimerCorte] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  });
 
   // Paso 3: Fondeo
   const [fondos, setFondos] = useState<Fondo[]>([]);
   const [fondosLoading, setFondosLoading] = useState(true);
   const [aportes, setAportes] = useState<FondoAportes>({});
+  const [pctInput, setPctInput] = useState<Record<number, string>>({});
 
   // Simulación y Backend
   const [simulacion, setSimulacion] = useState<Proyeccion | null>(null);
@@ -124,6 +135,25 @@ export function PrestamoFormPage() {
   // Validaciones por paso
   const paso1Valido = !!clienteId;
 
+
+  const metricasHistorial = useMemo(() => {
+    const activos = historialCliente.filter((p) => p.estado !== 'CANCELADO');
+    const cancelados = historialCliente.filter((p) => p.estado === 'CANCELADO');
+    const saldoTotal = activos.reduce(
+      (acc, p) => acc + (Number(p.saldo_insoluto || (p as any).saldo_deudor) || 0),
+      0
+    );
+    const enMora = activos.filter(
+      (p) => p.estado === 'EN_MORA' || ((p as any).dias_mora ?? p.dias_atraso ?? 0) > 0
+    );
+    return {
+      activos,
+      cancelados,
+      saldoTotal,
+      enMora,
+    };
+  }, [historialCliente]);
+
   const paso2Valido =
     montoPrincipalNum > 0 &&
     (esPlazoIndefinido ? true : Number(plazoMeses) > 0) &&
@@ -166,11 +196,11 @@ export function PrestamoFormPage() {
       errors.push('Seleccione al menos un fondo con monto aportado');
     if (Math.abs(totalAportado - montoPrincipalNum) > 0.01) {
       errors.push(
-        `La suma de aportes (${totalAportado.toFixed(2)}) debe igualar el monto principal (${montoPrincipalNum.toFixed(2)})`
+        `La suma de aportes (${fmtMonto(totalAportado)}) debe igualar el monto principal (${fmtMonto(montoPrincipalNum)})`
       );
     }
     if (Math.abs(sumaPi - 1) > 0.0001) {
-      errors.push(`La suma de Pi (${sumaPi.toFixed(4)}) debe ser 1.0000 (100%)`);
+      errors.push(`La distribución de participación (${(sumaPi * 100).toFixed(1)}%) debe sumar exactamente el 100%`);
     }
     for (const k of fondosConSobreSaldo) {
       const id = Number(k);
@@ -243,21 +273,65 @@ export function PrestamoFormPage() {
       }
       return next;
     });
+    setPctInput((prev) => {
+      const next = { ...prev };
+      delete next[fondoId];
+      return next;
+    });
   };
 
   const handleMontoAportado = (fondoId: number, monto: string) => {
-    setAportes((prev) => ({ ...prev, [fondoId]: { ...prev[fondoId], monto_aportado: monto } }));
+    const mNum = parseFloat(monto) || 0;
+    let piStr = '';
+    let pctStr = '';
+    if (montoPrincipalNum > 0 && mNum > 0) {
+      const ratio = mNum / montoPrincipalNum;
+      piStr = ratio.toFixed(4);
+      pctStr = (ratio * 100).toFixed(2);
+    }
+    setAportes((prev) => ({
+      ...prev,
+      [fondoId]: {
+        ...prev[fondoId],
+        monto_aportado: monto,
+        porcentaje_pi: piStr,
+      },
+    }));
+    setPctInput((prev) => ({
+      ...prev,
+      [fondoId]: pctStr,
+    }));
   };
 
-  const handlePiChange = (fondoId: number, pi: string) => {
-    setAportes((prev) => ({ ...prev, [fondoId]: { ...prev[fondoId], porcentaje_pi: pi } }));
+  const handlePorcentajeInput = (fondoId: number, pctStr: string) => {
+    setPctInput((prev) => ({ ...prev, [fondoId]: pctStr }));
+    const pNum = parseFloat(pctStr) || 0;
+    let montoStr = '';
+    let piStr = '';
+    if (pNum > 0) {
+      const ratio = pNum / 100;
+      piStr = ratio.toFixed(4);
+      if (montoPrincipalNum > 0) {
+        montoStr = Math.round(ratio * montoPrincipalNum * 100 / 100).toFixed(2);
+      }
+    }
+    setAportes((prev) => ({
+      ...prev,
+      [fondoId]: {
+        ...prev[fondoId],
+        monto_aportado: montoStr,
+        porcentaje_pi: piStr,
+      },
+    }));
   };
 
-  /** Reparte el monto en partes iguales y recalcula Pi con el último ajuste de centavos. */
+
+  /** Reparte el monto en partes iguales y recalcula montos y porcentajes con ajuste de centavos. */
   const distribuirAutomatico = () => {
     const ids = Object.keys(aportes).map(Number);
     if (ids.length === 0 || montoPrincipalNum <= 0) return;
     const next: FondoAportes = {};
+    const nextPct: Record<number, string> = {};
     let restante = montoPrincipalNum;
     ids.forEach((id, i) => {
       const esUltimo = i === ids.length - 1;
@@ -265,12 +339,15 @@ export function PrestamoFormPage() {
         ? restante
         : Math.round(((montoPrincipalNum / ids.length) + Number.EPSILON) * 100) / 100;
       restante = Math.round((restante - monto) * 100) / 100;
+      const pi = (monto / montoPrincipalNum).toFixed(4);
       next[id] = {
         monto_aportado: monto.toFixed(2),
-        porcentaje_pi: (monto / montoPrincipalNum).toFixed(4),
+        porcentaje_pi: pi,
       };
+      nextPct[id] = (Number(pi) * 100).toFixed(2);
     });
     setAportes(next);
+    setPctInput(nextPct);
   };
 
   const selectCliente = (c: Cliente) => {
@@ -280,6 +357,22 @@ export function PrestamoFormPage() {
     setClienteLabel(etiqueta);
     setClienteSearch(etiqueta);
     setShowClienteDropdown(false);
+    setLoadingHistorial(true);
+    if (typeof prestamoService.list === 'function') {
+      prestamoService
+        .list({ cliente: c.id })
+        .then((data) => {
+          setHistorialCliente(data.results || []);
+        })
+        .catch(() => {
+          setHistorialCliente([]);
+        })
+        .finally(() => {
+          setLoadingHistorial(false);
+        });
+    } else {
+      setLoadingHistorial(false);
+    }
   };
 
   const deseleccionarCliente = () => {
@@ -288,6 +381,7 @@ export function PrestamoFormPage() {
     setClienteLabel('');
     setClienteSearch('');
     setShowClienteDropdown(false);
+    setHistorialCliente([]);
   };
 
   const aplicarFechaHoy = () => {
@@ -322,21 +416,22 @@ export function PrestamoFormPage() {
       });
       setCreatedPrestamo(prestamo);
       setShowConfirm(false);
+      toast.success('Crédito otorgado y registrado exitosamente');
     } catch (err: any) {
       const data = err.response?.data;
+      let msg = 'Error al crear el préstamo';
       if (data?.fondos_detalle) {
-        setServerError((data.fondos_detalle as string[]).map(String).join(' '));
+        msg = (data.fondos_detalle as string[]).map(String).join(' ');
       } else if (data?.detail) {
-        setServerError(String(data.detail));
+        msg = String(data.detail);
       } else if (data && typeof data === 'object') {
-        setServerError(
+        msg =
           Object.entries(data)
             .flatMap(([k, v]) => (Array.isArray(v) ? v.map(String) : [`${k}: ${String(v)}`]))
-            .join(' ') || 'Error al crear el préstamo'
-        );
-      } else {
-        setServerError('Error al crear el préstamo');
+            .join(' ') || 'Error al crear el préstamo';
       }
+      setServerError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -348,13 +443,19 @@ export function PrestamoFormPage() {
     setClienteSeleccionado(null);
     setClienteLabel('');
     setClienteSearch('');
+    setHistorialCliente([]);
     setMontoPrincipal('');
     setTasaInteres('0.0250');
     setPlazoMeses('12');
+    setEsPlazoIndefinido(false);
     setPeriodicidad('MENSUAL');
-    setFechaDesembolso('');
-    setFechaPrimerCorte('');
+    const hoy = new Date().toISOString().slice(0, 10);
+    setFechaDesembolso(hoy);
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    setFechaPrimerCorte(d.toISOString().slice(0, 10));
     setAportes({});
+    setPctInput({});
     setServerError('');
     setSimulacion(null);
     setCreatedPrestamo(null);
@@ -450,7 +551,7 @@ export function PrestamoFormPage() {
     <Layout titulo="Nuevo Préstamo">
       <PageHeader
         titulo="Solicitud de Crédito"
-        descripcion="Formulario asistido por páginas: multifondo familiar con interés sobre saldo insoluto (Ley 176)"
+        descripcion="Registro asistido de nuevo crédito con asignación de fondos"
       />
 
       {createdPrestamo ? (
@@ -469,18 +570,44 @@ export function PrestamoFormPage() {
             <BotonPagare
               prestamoId={createdPrestamo.id}
               variant="primary"
-              label="Descargar Pagaré"
+              label="Ver / Imprimir Pagaré"
+              abrirVentana={true}
               onError={setServerError}
             />
+            <Button
+              variant="secondary"
+              icon="badge"
+              onClick={() => navigate(`/clientes?expediente=${createdPrestamo.cliente}`)}
+              title="Abrir el expediente y datos del prestatario"
+            >
+              Ver Expediente del Cliente
+            </Button>
+            <Button
+              variant="secondary"
+              icon="receipt_long"
+              onClick={() =>
+                navigate(
+                  `/reportes/estados-cuenta?cliente=${createdPrestamo.cliente}&prestamo=${createdPrestamo.id}`
+                )
+              }
+              title="Consultar el estado de cuenta oficial"
+            >
+              Estado de Cuenta
+            </Button>
+            <Button
+              variant="secondary"
+              icon="point_of_sale"
+              onClick={() => navigate('/cobros')}
+              title="Ir al panel de cobranza"
+            >
+              Ir a Cobranza
+            </Button>
             <Button icon="add" onClick={resetForm}>
               Nuevo Préstamo
             </Button>
-            <Button variant="secondary" icon="point_of_sale" onClick={() => (location.href = '/cobros')}>
-              Ir a Cobranza
-            </Button>
           </div>
-          <p class="mt-4 text-body-xs text-slate-400">
-            Entregue el pagaré firmado al cliente como título ejecutivo del crédito (CAVI-TK25 / Art. 3180 C.C.).
+          <p class="mt-5 text-body-xs text-slate-500">
+            El crédito ha sido formalizado en el sistema. Puede entregar el pagaré firmado o consultar el expediente del cliente en cualquier momento.
           </p>
           {serverError && (
             <p class="mt-3 text-body-sm text-red-700 bg-red-50 p-2 rounded border border-red-200" role="alert">
@@ -647,6 +774,104 @@ export function PrestamoFormPage() {
                         </span>
                       </div>
                     </div>
+
+                    {/* Ficha de Historial Crediticio Interno con CAVI */}
+                    <div class="mt-4 border-t border-emerald-200/60 pt-4">
+                      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                        <div class="flex items-center gap-2">
+                          <Icon name="history_edu" size={18} class="text-slate-700" />
+                          <h4 class="text-label-sm font-bold uppercase tracking-wider text-slate-800">
+                            Historial Crediticio con CAVI
+                          </h4>
+                        </div>
+                        {loadingHistorial ? (
+                          <span class="flex items-center gap-1 text-body-xs text-slate-500">
+                            <Spinner size={12} /> Consultando registros...
+                          </span>
+                        ) : (
+                          <span
+                            class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-label-xs font-bold ${
+                              historialCliente.length === 0
+                                ? 'bg-blue-100 text-blue-800'
+                                : metricasHistorial.enMora.length > 0
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            <span
+                              class={`h-1.5 w-1.5 rounded-full ${
+                                historialCliente.length === 0
+                                  ? 'bg-blue-600'
+                                  : metricasHistorial.enMora.length > 0
+                                  ? 'bg-rose-600'
+                                  : 'bg-emerald-600'
+                              }`}
+                            />
+                            {historialCliente.length === 0
+                              ? 'Cliente Nuevo (Sin Historial Previo)'
+                              : metricasHistorial.enMora.length > 0
+                              ? `Atención: ${metricasHistorial.enMora.length} Crédito(s) en Mora`
+                              : 'Historial al Día / Excelente'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div class="rounded-lg bg-white/90 p-2.5 border border-emerald-100 text-center shadow-xs">
+                          <span class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Créditos</span>
+                          <span class="text-body-md font-black text-slate-900">{historialCliente.length}</span>
+                        </div>
+                        <div class="rounded-lg bg-white/90 p-2.5 border border-emerald-100 text-center shadow-xs">
+                          <span class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Activos en Cobro</span>
+                          <span class="text-body-md font-black text-emerald-700">{metricasHistorial.activos.length}</span>
+                        </div>
+                        <div class="rounded-lg bg-white/90 p-2.5 border border-emerald-100 text-center shadow-xs">
+                          <span class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Saldados / Cancelados</span>
+                          <span class="text-body-md font-black text-slate-700">{metricasHistorial.cancelados.length}</span>
+                        </div>
+                        <div class="rounded-lg bg-white/90 p-2.5 border border-emerald-100 text-center shadow-xs">
+                          <span class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Deuda Vigente</span>
+                          <span class="text-body-md font-black text-blue-900 tnum">{fmtMonto(metricasHistorial.saldoTotal)}</span>
+                        </div>
+                      </div>
+
+                      {historialCliente.length > 0 && (
+                        <div class="mt-3 overflow-hidden rounded-lg border border-emerald-200/80 bg-white shadow-xs">
+                          <table class="w-full text-left text-body-xs">
+                            <thead class="bg-slate-50/80 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
+                              <tr>
+                                <th class="p-2">Crédito</th>
+                                <th class="p-2 text-right">Monto</th>
+                                <th class="p-2 text-right">Saldo Deudor</th>
+                                <th class="p-2">Estado</th>
+                              </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                              {historialCliente.slice(0, 4).map((p) => (
+                                <tr key={p.id} class="hover:bg-slate-50/50">
+                                  <td class="p-2 font-medium">#{p.id} · {p.plazo_meses > 0 ? `${p.plazo_meses}m` : 'Indef.'}</td>
+                                  <td class="p-2 text-right tnum">{fmtMonto(p.monto_principal)}</td>
+                                  <td class="p-2 text-right tnum font-bold text-slate-800">
+                                    {p.estado === 'CANCELADO' ? 'C$0.00' : fmtMonto(p.saldo_insoluto || (p as any).saldo_deudor)}
+                                  </td>
+                                  <td class="p-2">
+                                    <span class={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      p.estado === 'CANCELADO'
+                                        ? 'bg-slate-100 text-slate-700'
+                                        : p.estado === 'EN_MORA'
+                                        ? 'bg-rose-100 text-rose-700'
+                                        : 'bg-emerald-100 text-emerald-700'
+                                    }`}>
+                                      {p.estado === 'CANCELADO' ? 'Cancelado' : p.estado === 'EN_MORA' ? 'Mora' : 'Activo'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div class="mt-6 rounded-xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
@@ -662,15 +887,23 @@ export function PrestamoFormPage() {
               </Card>
 
               {/* Pie de navegación de página 1 */}
-              <div class="flex justify-end gap-3 pt-2">
-                <Button
-                  size="lg"
-                  icon="arrow_forward"
-                  disabled={!paso1Valido}
-                  onClick={() => setPasoActual(2)}
-                >
-                  Siguiente: Condiciones Financieras
-                </Button>
+              <div class="flex items-center justify-between pt-2">
+                <div />
+                <div class="flex items-center gap-3">
+                  {!paso1Valido && (
+                    <span class="text-body-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                      Seleccione un prestatario titular para continuar
+                    </span>
+                  )}
+                  <Button
+                    size="lg"
+                    icon="arrow_forward"
+                    disabled={!paso1Valido}
+                    onClick={() => setPasoActual(2)}
+                  >
+                    Siguiente: Condiciones Financieras
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -684,7 +917,7 @@ export function PrestamoFormPage() {
                 <div class="lg:col-span-2 space-y-6">
                   <Card
                     title="Paso 2: Condiciones del Préstamo"
-                    subtitle="Establezca el capital, tasa mensual, plazo y fechas de corte (Ley 176)"
+                    subtitle="Establezca el capital, tasa mensual, plazo y fechas de corte"
                   >
                     <div class="space-y-5">
                       <div>
@@ -743,8 +976,8 @@ export function PrestamoFormPage() {
                           </div>
                           {Number(tasaInteres) > 0.0300 && (
                             <div class="mt-2 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-1.5">
-                              <Icon name="alert-triangle" size={14} />
-                              Tasa histórica / especial: supera el tope legal del BCN (3.00% m.)
+                              <Icon name="info" size={14} />
+                              Tasa especial: superior al 3.00% mensual
                             </div>
                           )}
                         </div>
@@ -782,6 +1015,7 @@ export function PrestamoFormPage() {
                           ) : (
                             <>
                               <Input
+                                label="Plazo (meses)"
                                 value={plazoMeses}
                                 onInput={setPlazoMeses}
                                 type="number"
@@ -853,7 +1087,7 @@ export function PrestamoFormPage() {
                 <div class="space-y-4">
                   <Card
                     title="Simulación de Cuota"
-                    subtitle="Cálculo oficial backend (Ley 176)"
+                    subtitle="Cálculo proyectado de cuotas"
                     action={
                       simulando ? (
                         <span class="flex items-center gap-1 text-body-xs text-slate-500">
@@ -890,7 +1124,7 @@ export function PrestamoFormPage() {
                           <span class="font-medium text-slate-700">
                             {fmtNumero(Number(simulacion.tasa_periodica) * 100)}%
                           </span>{' '}
-                          (sin anatocismo).
+                          (interés simple sobre saldo deudor).
                         </p>
                       </div>
                     ) : (
@@ -911,14 +1145,29 @@ export function PrestamoFormPage() {
                 <Button variant="secondary" icon="arrow_back" onClick={() => setPasoActual(1)}>
                   Anterior: Cliente
                 </Button>
-                <Button
-                  size="lg"
-                  icon="arrow_forward"
-                  disabled={!paso2Valido}
-                  onClick={() => setPasoActual(3)}
-                >
-                  Siguiente: Fondeo Multifondo
-                </Button>
+                <div class="flex items-center gap-3">
+                  {!paso2Valido && (
+                    <span class="text-body-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                      {montoPrincipalNum <= 0
+                        ? 'Ingrese el monto del préstamo'
+                        : !fechaDesembolso || !fechaPrimerCorte
+                        ? 'Indique las fechas de desembolso y corte'
+                        : fechaPrimerCorte < fechaDesembolso
+                        ? 'El corte no puede ser anterior al desembolso'
+                        : !esPlazoIndefinido && !(Number(plazoMeses) > 0)
+                        ? 'Indique el plazo en meses'
+                        : 'Complete los datos requeridos'}
+                    </span>
+                  )}
+                  <Button
+                    size="lg"
+                    icon="arrow_forward"
+                    disabled={!paso2Valido}
+                    onClick={() => setPasoActual(3)}
+                  >
+                    Siguiente: Fondeo Multifondo
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -951,13 +1200,13 @@ export function PrestamoFormPage() {
                       </span>
                     </div>
                     <div>
-                      <span class="block text-body-xs text-slate-400">Σ Pi:</span>
+                      <span class="block text-body-xs text-slate-400">Participación:</span>
                       <span
                         class={`tnum font-bold ${
                           Math.abs(sumaPi - 1) <= 0.0001 ? 'text-emerald-400' : 'text-amber-400'
                         }`}
                       >
-                        {sumaPi.toFixed(4)}
+                        {(sumaPi * 100).toFixed(1)}% <span class="text-xs text-slate-400 font-normal">1.0000</span>
                       </span>
                     </div>
                   </div>
@@ -1016,10 +1265,10 @@ export function PrestamoFormPage() {
                             Saldo Disponible
                           </th>
                           <th scope="col" class="px-4 text-left text-label-xs font-semibold uppercase text-slate-500">
-                            Monto Aportado (C$)
+                            Monto a Debitar (C$)
                           </th>
                           <th scope="col" class="px-4 text-left text-label-xs font-semibold uppercase text-slate-500">
-                            % Participación (Pi)
+                            % Participación
                           </th>
                         </tr>
                       </thead>
@@ -1053,33 +1302,51 @@ export function PrestamoFormPage() {
                                 {fmtMonto(fondo.saldo_disponible)}
                               </td>
                               <td class="px-4 py-3">
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  aria-label={`Monto aportado ${fondo.nombre}`}
-                                  disabled={!activo}
-                                  value={activo ? aporte.monto_aportado : ''}
-                                  onInput={(e) => handleMontoAportado(fondo.id, e.currentTarget.value)}
-                                  placeholder="0.00"
-                                  class={`tnum w-36 rounded-md border px-3 py-1.5 outline-none transition-colors focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 font-medium ${
-                                    sobreSaldo ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-300'
-                                  }`}
-                                />
+                                <div class="relative w-36">
+                                  <span class="pointer-events-none absolute left-2.5 top-1.5 text-body-xs font-semibold text-slate-400">
+                                    C$
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    aria-label={`Monto aportado ${fondo.nombre}`}
+                                    disabled={!activo}
+                                    value={activo ? aporte.monto_aportado : ''}
+                                    onInput={(e) => handleMontoAportado(fondo.id, e.currentTarget.value)}
+                                    placeholder="0.00"
+                                    class={`tnum w-full rounded-md border py-1.5 pl-8 pr-2.5 outline-none transition-colors focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 font-semibold text-slate-900 ${
+                                      sobreSaldo ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-300'
+                                    }`}
+                                  />
+                                </div>
                               </td>
                               <td class="px-4 py-3">
-                                <input
-                                  type="number"
-                                  step="0.0001"
-                                  min="0"
-                                  max="1"
-                                  aria-label={`% Pi ${fondo.nombre}`}
-                                  disabled={!activo}
-                                  value={activo ? aporte.porcentaje_pi : ''}
-                                  onInput={(e) => handlePiChange(fondo.id, e.currentTarget.value)}
-                                  placeholder="0.0000"
-                                  class="tnum w-32 rounded-md border border-slate-300 px-3 py-1.5 outline-none transition-colors focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 font-medium"
-                                />
+                                <div class="relative w-32">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max="100"
+                                    aria-label={`% Pi / % Participación ${fondo.nombre}`}
+                                    disabled={!activo}
+                                    value={
+                                      activo
+                                        ? pctInput[fondo.id] !== undefined
+                                          ? pctInput[fondo.id]
+                                          : aporte.porcentaje_pi
+                                          ? String(Number((Number(aporte.porcentaje_pi) * 100).toFixed(2)))
+                                          : ''
+                                        : ''
+                                    }
+                                    onInput={(e) => handlePorcentajeInput(fondo.id, e.currentTarget.value)}
+                                    placeholder="0"
+                                    class="tnum w-full rounded-md border border-slate-300 py-1.5 pl-3 pr-7 outline-none transition-colors focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 font-semibold text-slate-900"
+                                  />
+                                  <span class="pointer-events-none absolute right-2.5 top-1.5 text-body-xs font-semibold text-slate-400">
+                                    %
+                                  </span>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1106,14 +1373,25 @@ export function PrestamoFormPage() {
                 <Button variant="secondary" icon="arrow_back" onClick={() => setPasoActual(2)}>
                   Anterior: Condiciones
                 </Button>
-                <Button
-                  size="lg"
-                  icon="arrow_forward"
-                  disabled={!paso3Valido}
-                  onClick={() => setPasoActual(4)}
-                >
-                  Siguiente: Revisión y Desembolso
-                </Button>
+                <div class="flex items-center gap-3">
+                  {!paso3Valido && (
+                    <span class="text-body-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                      {fondosSeleccionados.length === 0
+                        ? 'Seleccione al menos un fondo'
+                        : fondosConSobreSaldo.length > 0
+                        ? 'Uno o más fondos superan su saldo en caja'
+                        : `Falta asignar ${fmtMonto(Math.abs(faltante))} para completar el 100%`}
+                    </span>
+                  )}
+                  <Button
+                    size="lg"
+                    icon="arrow_forward"
+                    disabled={!paso3Valido}
+                    onClick={() => setPasoActual(4)}
+                  >
+                    Siguiente: Revisión y Desembolso
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -1165,14 +1443,14 @@ export function PrestamoFormPage() {
                   <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                     <div class="flex items-center gap-2 mb-2 text-label-xs font-semibold uppercase text-slate-500">
                       <Icon name="savings" size={16} />
-                      Multifondo Familiar
+                      Distribución de Fondos
                     </div>
                     <div class="space-y-1">
                       {filasAporte.map((f) => (
                         <div key={f.fondo.id} class="flex justify-between text-body-xs">
                           <span class="text-slate-600">{f.fondo.nombre}:</span>
                           <span class="tnum font-semibold text-slate-900">
-                            {fmtMonto(f.aporte?.monto_aportado ?? 0)} ({(Number(f.aporte?.porcentaje_pi) * 100).toFixed(2)}%)
+                            {fmtMonto(f.aporte?.monto_aportado ?? 0)} ({(Number(f.aporte?.porcentaje_pi) * 100).toFixed(1)}%)
                           </span>
                         </div>
                       ))}
@@ -1268,40 +1546,52 @@ export function PrestamoFormPage() {
       <Modal
         open={showConfirm}
         onClose={() => setShowConfirm(false)}
-        title="Confirmar Desembolso"
-        subtitle="Se descontará el saldo de cada fondo de forma atómica y se emitirá el pagaré"
+        title="Confirmar Formalización y Desembolso"
+        subtitle="Verifique el resumen contractual y el fondeo antes de emitir el pagaré oficial"
         icon="assignment_turned_in"
         size="lg"
         footer={
           <>
             <Button variant="ghost" onClick={() => setShowConfirm(false)} disabled={submitting}>
-              Cancelar
+              Volver a Revisar
             </Button>
-            <Button onClick={handleSubmit} loading={submitting}>
+            <Button onClick={handleSubmit} loading={submitting} icon="check_circle">
               Confirmar Desembolso
             </Button>
           </>
         }
       >
         <div class="space-y-4">
-          <dl class="space-y-2 rounded-xl bg-slate-50 p-4">
+          <div class="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 text-body-xs text-emerald-900 flex items-start gap-2.5">
+            <Icon name="verified_user" size={18} class="shrink-0 text-emerald-700 mt-0.5" />
+            <div>
+              <p class="font-bold text-emerald-950">Formalización Oficial CAVI</p>
+              <p class="mt-0.5 text-emerald-800">
+                Se debitarán los saldos de cada bolsa familiar de forma atómica y se generará el documento legal de Pagaré Notarial con numeración única para su firma.
+              </p>
+            </div>
+          </div>
+
+          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-xl bg-slate-50 p-4 border border-slate-200 text-body-sm">
             {[
-              ['Cliente titular', clienteLabel],
-              ['Monto principal', fmtMonto(montoPrincipalNum)],
-              ['Tasa / Plazo', `${Number(tasaInteres).toFixed(4)} mensual · ${esPlazoIndefinido ? 'Periodo Indefinido' : `${plazoMeses} meses`}`],
-              ['Periodicidad', periodicidad === 'MENSUAL' ? 'Mensual' : 'Quincenal'],
-              ['Fecha de desembolso', fechaDesembolso],
-              ['Fecha primer corte', fechaPrimerCorte],
+              ['Cliente Titular', clienteLabel],
+              ['Monto Principal', fmtMonto(montoPrincipalNum)],
+              ['Tasa Pactada', `${(Number(tasaInteres) * 100).toFixed(2)}% mensual`],
+              ['Plazo y Frecuencia', esPlazoIndefinido ? `Periodo Indefinido (${periodicidad.toLowerCase()})` : `${plazoMeses} meses (${periodicidad.toLowerCase()})`],
+              ['Fecha Desembolso', fechaDesembolso],
+              ['Primer Corte', fechaPrimerCorte],
+              ['Cuota Estimada', simulacion?.periodos[0]?.cuota ? fmtMonto(simulacion.periodos[0].cuota) : 'Según interés'],
+              ['Total a Pagar', simulacion?.total_cuotas ? fmtMonto(simulacion.total_cuotas) : 'Según ciclos'],
             ].map(([label, valor]) => (
-              <div key={label} class="flex justify-between gap-4 text-body-md">
-                <dt class="text-slate-600">{label}</dt>
-                <dd class="font-semibold text-slate-900">{valor}</dd>
+              <div key={label} class="flex justify-between gap-2 border-b border-slate-100 py-1">
+                <dt class="text-slate-500 font-medium">{label}:</dt>
+                <dd class="font-bold text-slate-900 tnum">{valor}</dd>
               </div>
             ))}
           </dl>
 
           <div>
-            <p class="mb-2 text-label-md font-semibold text-slate-800">Débitos por fondo de capital</p>
+            <p class="mb-2 text-label-sm font-semibold uppercase tracking-wider text-slate-700">Débitos por Bolsa Familiar</p>
             <div class="overflow-hidden rounded-xl border border-slate-200">
               <DataTable
                 columns={[
@@ -1322,11 +1612,11 @@ export function PrestamoFormPage() {
                   },
                   {
                     key: 'pi',
-                    header: 'Participación (% Pi)',
+                    header: 'Participación (%)',
                     align: 'right',
                     render: (fila) => (
-                      <span class="tnum text-slate-700">
-                        {(Number(fila.aporte?.porcentaje_pi) || 0).toFixed(4)}
+                      <span class="tnum font-medium text-slate-800">
+                        {((Number(fila.aporte?.porcentaje_pi) || 0) * 100).toFixed(1)}%
                       </span>
                     ),
                   },

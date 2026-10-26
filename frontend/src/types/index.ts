@@ -3,6 +3,7 @@ export interface Usuario {
   nombre_completo: string;
   correo: string;
   rol: 'ADMINISTRADOR' | 'COBRANZA';
+  is_superuser?: boolean;
   activo: boolean;
   creado_en: string;
   actualizado_en: string;
@@ -17,6 +18,14 @@ export interface Cliente {
   telefono: string;
   direccion: string;
   actividad_economica: string | null;
+  departamento?: number | null;
+  departamento_nombre?: string;
+  municipio?: number | null;
+  municipio_nombre?: string;
+  actividad_catalogo?: number | null;
+  actividad_catalogo_nombre?: string;
+  estado_cliente?: number | null;
+  estado_cliente_nombre?: string;
   activo: boolean;
   creado_en: string;
   actualizado_en: string;
@@ -26,6 +35,18 @@ export interface Fondo {
   id: number;
   nombre: string;
   familiar: string;
+  tipo_persona?: 'NATURAL' | 'JURIDICA';
+  tipo_persona_display?: string;
+  identificacion?: string | null;
+  nombres_titular?: string | null;
+  apellidos_titular?: string | null;
+  razon_social?: string | null;
+  ruc?: string | null;
+  representante_legal?: string | null;
+  cedula_representante?: string | null;
+  telefono_contacto?: string | null;
+  direccion_legal?: string | null;
+  parentesco_relacion?: string | null;
   saldo_disponible: string;
   capital_inicial: string;
   ganancias_acumuladas: string;
@@ -154,6 +175,15 @@ export interface ResumenCartera {
 export interface Dashboard {
   fecha: string;
   clientes_activos: number;
+  alertas_anulaciones?: Array<{
+    id: number;
+    codigo: string;
+    monto: string;
+    cliente: string;
+    anulado_por: string;
+    motivo: string;
+    anulado_en: string;
+  }>;
   bolsas: { cantidad: number; capital_en_calle: string };
   creditos_vigentes: {
     cantidad: number;
@@ -237,7 +267,11 @@ export interface Pago {
   fecha_pago: string;
   metodo_pago: 'EFECTIVO' | 'TRANSFERENCIA' | 'CHEQUE' | 'OTRO';
   metodo_pago_display: string;
+  banco?: number | null;
+  banco_nombre?: string;
   referencia_bancaria: string;
+  efectivo_recibido?: string | null;
+  cambio_devuelto?: string | null;
   aplicacion_mora: string;
   aplicacion_interes: string;
   aplicacion_capital: string;
@@ -247,6 +281,12 @@ export interface Pago {
   saldo_deudor_tras_pago?: number;
   usuario_nombre: string;
   creado_en: string;
+  codigo_seguridad?: string;
+  estado?: 'VALIDO' | 'ANULADO';
+  motivo_anulacion?: string;
+  anulado_en?: string | null;
+  anulado_por_nombre?: string | null;
+  qr_data?: string;
   exceso_no_aplicado?: string;
   fondos_detalle?: PagoFondoDetalle[];
   ganancia_administracion?: number;
@@ -321,6 +361,13 @@ export interface DesgloseFondoPeriodo {
   cantidad_abonos: number;
 }
 
+export interface VariacionMoM {
+  actual: string;
+  anterior: string;
+  diferencia: string;
+  porcentaje: string;
+}
+
 export interface TransaccionPeriodo {
   pago_id: number;
   codigo_comprobante: string;
@@ -332,8 +379,27 @@ export interface TransaccionPeriodo {
   porcentaje_pi: string;
   capital_reintegrado: string;
   ganancia_interes: string;
+  monto_total?: string;
+  aplicacion_capital?: string;
+  aplicacion_interes?: string;
+  aplicacion_mora?: string;
   metodo_pago: string;
   referencia_bancaria: string;
+}
+
+export interface TransaccionCanceladaPeriodo {
+  pago_id: number;
+  codigo_comprobante: string;
+  codigo_seguridad?: string;
+  fecha_pago: string;
+  fecha_anulacion: string;
+  cliente: string;
+  prestamo_id: number;
+  monto_total: string;
+  aplicacion_capital: string;
+  aplicacion_interes: string;
+  motivo_anulacion: string;
+  anulado_por_nombre: string;
 }
 
 export interface InformeFinancieroResponse {
@@ -350,6 +416,25 @@ export interface InformeFinancieroResponse {
     flujo_neto: string;
     cantidad_pagos: number;
   };
+  comparativa_mes_anterior?: {
+    mes_anterior: number;
+    anio_anterior: number;
+    total_recaudado: VariacionMoM;
+    capital_retornado: VariacionMoM;
+    interes_total: VariacionMoM;
+    interes_fondos: VariacionMoM;
+    interes_admin: VariacionMoM;
+    mora_total: VariacionMoM;
+    desembolsos_mes: VariacionMoM;
+    cantidad_pagos: VariacionMoM;
+  };
+  seccion_cancelados?: {
+    cantidad: number;
+    total_revertido: string;
+    capital_revertido: string;
+    interes_revertido: string;
+    transacciones_canceladas: TransaccionCanceladaPeriodo[];
+  };
   desglose_fondos: DesgloseFondoPeriodo[];
   transacciones: TransaccionPeriodo[];
 }
@@ -362,5 +447,144 @@ export interface ConfiguracionSistema {
   dias_gracia: number;
   permitir_plazo_indefinido: boolean;
   tasa_mora_diaria: string;
+  horas_tolerancia_anulacion?: number;
   actualizado_en: string;
+}
+
+export interface CatDepartamento {
+  id: number;
+  codigo: string;
+  nombre: string;
+}
+
+export interface CatMunicipio {
+  id: number;
+  departamento: number;
+  departamento_nombre?: string;
+  codigo: string;
+  nombre: string;
+}
+
+export interface CatActividadEconomica {
+  id: number;
+  codigo: string;
+  nombre: string;
+  sector: string;
+}
+
+export interface CatBanco {
+  id: number;
+  codigo: string;
+  nombre: string;
+  requiere_titular: boolean;
+  activo: boolean;
+}
+
+export interface CatEstadoPrestamo {
+  id: number;
+  codigo: string;
+  nombre: string;
+  es_activo: boolean;
+  es_mora: boolean;
+  orden_flujo: number;
+  descripcion: string;
+}
+
+export interface CatEstadoCuota {
+  id: number;
+  codigo: string;
+  nombre: string;
+  requiere_cobro: boolean;
+  descripcion: string;
+}
+
+export interface CatEstadoCliente {
+  id: number;
+  codigo: string;
+  nombre: string;
+  permite_credito: boolean;
+  descripcion: string;
+}
+
+export interface CatEstadoCaja {
+  id: number;
+  codigo: string;
+  nombre: string;
+  permite_movimientos: boolean;
+}
+
+export interface CatPermiso {
+  id: number;
+  modulo: string;
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+}
+
+export interface PermisosResponse {
+  permisos: CatPermiso[];
+  roles: Array<{ codigo: string; nombre: string }>;
+  matriz: Record<string, Record<string, boolean>>;
+}
+
+export interface SesionCaja {
+  id: number;
+  usuario: number;
+  usuario_nombre: string;
+  fecha_apertura: string;
+  fecha_cierre: string | null;
+  saldo_inicial_efectivo: string;
+  total_cobrado_efectivo: string;
+  total_cobrado_banco: string;
+  efectivo_declarado: string;
+  diferencia: string;
+  estado: string;
+  supervisor_cierre: number | null;
+  supervisor_nombre: string | null;
+  observaciones: string;
+}
+
+export interface BitacoraActividad {
+  id: number;
+  modulo: string;
+  codigo_evento: string;
+  nivel_severidad: 'INFORMATIVO' | 'ADVERTENCIA' | 'CRITICO';
+  tipo_actividad?: number | null;
+  tipo_actividad_nombre?: string | null;
+  usuario?: number | null;
+  usuario_nombre?: string | null;
+  usuario_rol?: string | null;
+  cliente?: number | null;
+  cliente_nombre?: string | null;
+  prestamo?: number | null;
+  pago?: number | null;
+  codigo_comprobante?: string | null;
+  fondo?: number | null;
+  direccion_ip?: string | null;
+  agente_usuario?: string | null;
+  datos_anteriores?: Record<string, any> | null;
+  datos_nuevos?: Record<string, any> | null;
+  diferencial_cambios?: Record<string, { antes: any; despues: any }> | null;
+  observaciones: string;
+  creado_en: string;
+}
+
+export interface AuditoriaResumen {
+  total_eventos_mes: number;
+  total_eventos_hoy: number;
+  total_criticos_mes: number;
+  total_advertencias_mes: number;
+  recibos_anulados_mes: number;
+  monto_anulado_mes: string;
+  clientes_modificados_mes: number;
+  alertas_anulaciones_recientes: Array<{
+    id: number;
+    codigo: string;
+    monto: string;
+    cliente: string;
+    anulado_por: string;
+    motivo: string;
+    fecha: string | null;
+  }>;
+  es_admin: boolean;
 }

@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { Icon } from './Icon';
 import type { IconName } from './IconName';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANTES: Record<ButtonVariant, string> = {
@@ -12,6 +12,7 @@ const VARIANTES: Record<ButtonVariant, string> = {
     'bg-slate-100 text-slate-900 hover:bg-slate-200 active:scale-[0.99] focus-visible:ring-slate-400',
   ghost: 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-400',
   destructive: 'bg-red-50 text-red-700 hover:bg-red-100 active:scale-[0.99] focus-visible:ring-red-600',
+  danger: 'bg-red-600 text-white hover:bg-red-700 active:scale-[0.99] focus-visible:ring-red-600',
 };
 
 const TAMANOS: Record<ButtonSize, string> = {

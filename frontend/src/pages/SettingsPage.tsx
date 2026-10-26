@@ -1,18 +1,17 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Icon, Spinner } from '../components/ui';
+import { Button, Icon, Spinner, useToast } from '../components/ui';
 import { configuracionService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 export function SettingsPage() {
   const { hasRole } = useAuth();
   const esAdmin = hasRole('ADMINISTRADOR');
+  const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
 
   // Estados de configuración
   const [modoEstricto, setModoEstricto] = useState(false);
@@ -21,6 +20,7 @@ export function SettingsPage() {
   const [diasGracia, setDiasGracia] = useState(4);
   const [permitirPlazoIndefinido, setPermitirPlazoIndefinido] = useState(true);
   const [tasaMoraDiaria, setTasaMoraDiaria] = useState('0.0050');
+  const [horasToleranciaAnulacion, setHorasToleranciaAnulacion] = useState(72);
   const [actualizadoEn, setActualizadoEn] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,7 +29,6 @@ export function SettingsPage() {
 
   const cargarConfiguracion = async () => {
     setLoading(true);
-    setErrorMsg('');
     try {
       const data = await configuracionService.get();
       setModoEstricto(data.modo_estricto);
@@ -38,9 +37,10 @@ export function SettingsPage() {
       setDiasGracia(data.dias_gracia);
       setPermitirPlazoIndefinido(data.permitir_plazo_indefinido);
       setTasaMoraDiaria(data.tasa_mora_diaria);
+      setHorasToleranciaAnulacion(data.horas_tolerancia_anulacion ?? 72);
       setActualizadoEn(data.actualizado_en);
     } catch {
-      setErrorMsg('No se pudo cargar la configuración del sistema.');
+      toast.error('No se pudo cargar la configuración del sistema.');
     } finally {
       setLoading(false);
     }
@@ -51,9 +51,6 @@ export function SettingsPage() {
     if (!esAdmin) return;
 
     setSaving(true);
-    setSuccessMsg('');
-    setErrorMsg('');
-
     try {
       const updated = await configuracionService.update({
         modo_estricto: modoEstricto,
@@ -62,6 +59,7 @@ export function SettingsPage() {
         dias_gracia: Number(diasGracia),
         permitir_plazo_indefinido: permitirPlazoIndefinido,
         tasa_mora_diaria: tasaMoraDiaria,
+        horas_tolerancia_anulacion: Number(horasToleranciaAnulacion) || 72,
       });
 
       setModoEstricto(updated.modo_estricto);
@@ -70,12 +68,12 @@ export function SettingsPage() {
       setDiasGracia(updated.dias_gracia);
       setPermitirPlazoIndefinido(updated.permitir_plazo_indefinido);
       setTasaMoraDiaria(updated.tasa_mora_diaria);
+      setHorasToleranciaAnulacion(updated.horas_tolerancia_anulacion ?? 72);
       setActualizadoEn(updated.actualizado_en);
 
-      setSuccessMsg('Políticas y configuración del sistema guardadas correctamente.');
-      setTimeout(() => setSuccessMsg(''), 4000);
+      toast.success('Políticas y configuración del sistema guardadas correctamente.');
     } catch {
-      setErrorMsg('Ocurrió un error al guardar los cambios de configuración.');
+      toast.error('Ocurrió un error al guardar los cambios de configuración.');
     } finally {
       setSaving(false);
     }
@@ -93,55 +91,40 @@ export function SettingsPage() {
 
       {loading ? (
         <div class="flex items-center justify-center py-20">
-          <Spinner size="lg" />
+          <Spinner size={32} />
         </div>
       ) : (
         <div class="max-w-4xl mx-auto mt-4 space-y-3.5 pb-10">
           {/* Mensaje de permisos si no es admin */}
           {!esAdmin && (
-            <div class="bg-amber-50 border border-amber-200 rounded-md p-3 flex items-center gap-2.5">
-              <Icon name="warning" class="text-amber-600 w-4 h-4 shrink-0" />
-              <p class="text-xs text-amber-900 font-medium">
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-2.5">
+              <Icon name="warning" class="text-amber-600 w-5 h-5 shrink-0" />
+              <p class="text-body-sm text-amber-900 font-medium">
                 Solo el rol <strong>ADMINISTRADOR</strong> tiene permisos para modificar los parámetros y políticas del sistema.
               </p>
             </div>
           )}
 
-          {/* Mensaje de éxito */}
-          {successMsg && (
-            <div class="bg-emerald-50 border border-emerald-200 rounded-md p-3 flex items-center gap-2.5">
-              <Icon name="check_circle" class="text-emerald-600 w-4 h-4 shrink-0" />
-              <span class="text-xs text-emerald-900 font-semibold">{successMsg}</span>
-            </div>
-          )}
-
-          {/* Mensaje de error */}
-          {errorMsg && (
-            <div class="bg-rose-50 border border-rose-200 rounded-md p-3 flex items-center gap-2.5">
-              <Icon name="error" class="text-rose-600 w-4 h-4 shrink-0" />
-              <span class="text-xs text-rose-900 font-medium">{errorMsg}</span>
-            </div>
-          )}
-
           {/* Barra Resumen Compacta */}
-          <div class="bg-white rounded-lg border border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
             <div class="flex items-center gap-2">
-              <span class="font-bold text-slate-500 text-[11px] uppercase">Modo Activo:</span>
+              <span class="font-bold text-slate-500 text-[11px] uppercase tracking-wider">Modo Activo:</span>
               <span
-                class={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                class={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                   modoEstricto
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-amber-100 text-amber-900'
+                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                    : 'bg-amber-100 text-amber-900 border border-amber-200'
                 }`}
               >
                 {modoEstricto ? 'Modo Estricto BCN' : 'Digitalización Flexible'}
               </span>
             </div>
 
-            <div class="flex items-center gap-4 text-slate-600">
+            <div class="flex items-center gap-4 text-slate-600 font-medium">
               <span><strong>Gracia:</strong> {diasGracia}d</span>
               <span><strong>Usura:</strong> {permitirSuperarUsura ? 'Tolerancia (10%)' : `${tasaLegalPorc}% BCN`}</span>
               <span><strong>Cuota Abierta:</strong> {permitirPlazoIndefinido ? 'Sí' : 'No'}</span>
+              <span><strong>Anulación:</strong> {horasToleranciaAnulacion}h</span>
             </div>
           </div>
 
@@ -392,6 +375,55 @@ export function SettingsPage() {
                   class="h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
                 />
               </label>
+            </div>
+
+            {/* 5. VENTANA DE ANULACIÓN DE RECIBOS */}
+            <div class="bg-white rounded-lg border border-slate-200 p-4">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Icon name="history" size={18} class="text-indigo-600" />
+                  Ventana de Tolerancia para Anulación de Recibos
+                </h3>
+                <span class="text-xs font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                  {horasToleranciaAnulacion} horas permitidas
+                </span>
+              </div>
+
+              <p class="text-[11px] text-slate-500 mb-3">
+                Límite de tiempo máximo posterior a la emisión de un comprobante de cobro para que el Administrador pueda anularlo y revertir automáticamente saldos en cartera y movimientos en fondos.
+              </p>
+
+              <div class="flex flex-wrap items-center gap-2">
+                {[24, 48, 72, 96].map((hrs) => (
+                  <button
+                    key={hrs}
+                    type="button"
+                    disabled={!esAdmin}
+                    onClick={() => setHorasToleranciaAnulacion(hrs)}
+                    class={`h-8 px-3 rounded-md text-xs font-bold transition-colors ${
+                      horasToleranciaAnulacion === hrs
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {hrs} Horas {hrs === 72 ? '(Estándar)' : ''}
+                  </button>
+                ))}
+
+                <div class="flex items-center gap-1.5 ml-auto">
+                  <span class="text-[11px] text-slate-500">Personalizado:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="720"
+                    value={horasToleranciaAnulacion}
+                    disabled={!esAdmin}
+                    onChange={(e) => setHorasToleranciaAnulacion(Number((e.target as HTMLInputElement).value))}
+                    class="w-16 h-8 px-2 border rounded-md text-xs font-bold text-center border-slate-300"
+                  />
+                  <span class="text-xs text-slate-500 font-medium">hrs</span>
+                </div>
+              </div>
             </div>
 
             {/* FOOTER ACCIONES */}

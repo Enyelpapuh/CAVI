@@ -48,7 +48,9 @@ class TestImputacionArt3180:
         prestamo_vigente.refresh_from_db()
         assert str(prestamo_vigente.saldo_insoluto) == '8454.02'
         assert prestamo_vigente.estado == Prestamo.Estado.VIGENTE
-        assert res.data['codigo_comprobante'].startswith('PAG-')
+        assert res.data['codigo_comprobante'].startswith('REC-')
+        assert 'codigo_seguridad' in res.data
+        assert res.data['estado'] == 'VALIDO'
 
     def test_pago_menor_interes_minimo_bloqueado(self, auth_client, prestamo_vigente):
         res = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('299.99'), format='json')
@@ -282,7 +284,9 @@ class TestRecibo:
         pago_id = creado.data['id']
         res = auth_client.get(f'/api/pagos/{pago_id}/')
         assert res.status_code == 200
-        assert res.data['codigo_comprobante'].startswith('PAG-')
+        assert res.data['codigo_comprobante'].startswith('REC-')
+        assert 'codigo_seguridad' in res.data
+        assert res.data['estado'] == 'VALIDO'
         assert len(res.data['fondos_detalle']) == 1
         assert res.data['ganancia_administracion'] == '150.00'
 
@@ -300,3 +304,129 @@ class TestRecibo:
         assert 'ganancia_administracion' not in res.data
         assert 'interes_administracion' not in res.data
         assert res.data['aplicacion_interes'] == '300.00'
+
+    def test_anular_recibo_revierte_capital_y_fondos(self, auth_client, prestamo_vigente):
+        from API.models import Fondo, MovimientoFondo, GananciaAdministracion, BitacoraActividad
+
+        # 0. Registrar estado inicial del fondo antes del cobro
+        part_fondo = prestamo_vigente.fondos_detalle.first().fondo
+        part_fondo.refresh_from_db()
+        saldo_fondo_inicial = part_fondo.saldo_disponible
+        ganancias_fondo_inicial = part_fondo.ganancias_acumuladas
+
+        # 1. Asentar pago
+        creado = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('1845.98'), format='json')
+        pago_id = creado.data['id']
+        prestamo_vigente.refresh_from_db()
+        assert str(prestamo_vigente.saldo_insoluto) == '8454.02'
+
+        # Verificar que el pago impactó positivamente al fondo
+        part_fondo.refresh_from_db()
+        assert part_fondo.saldo_disponible > saldo_fondo_inicial
+        assert part_fondo.ganancias_acumuladas > ganancias_fondo_inicial
+        assert GananciaAdministracion.objects.filter(pago_id=pago_id).exists()
+
+        # 2. Anular pago con motivo formal
+        motivo = 'Pago asentado por error de digitación en comprobante'
+        res_anular = auth_client.post(f'/api/pagos/{pago_id}/anular/', {'motivo': motivo}, format='json')
+        assert res_anular.status_code == 200
+        assert res_anular.data['recibo']['estado'] == 'ANULADO'
+        assert res_anular.data['recibo']['motivo_anulacion'] == motivo
+
+        # 3. Verificar reversión en préstamo
+        prestamo_vigente.refresh_from_db()
+        assert str(prestamo_vigente.saldo_insoluto) == '10000.00'
+
+        # 4. Verificar reversión en la base de datos para Fondos Familiares
+        part_fondo.refresh_from_db()
+        assert part_fondo.saldo_disponible == saldo_fondo_inicial
+        assert part_fondo.ganancias_acumuladas == ganancias_fondo_inicial
+
+        # 5. Verificar creación del movimiento de reverso de fondos
+        mov_reverso = MovimientoFondo.objects.filter(
+            pago_id=pago_id,
+            tipo=MovimientoFondo.TipoMovimiento.REVERSO_PAGO
+        ).first()
+        assert mov_reverso is not None
+        assert mov_reverso.saldo_posterior == saldo_fondo_inicial
+        assert motivo in mov_reverso.descripcion
+
+        # 6. Verificar eliminación de la ganancia administrativa
+        assert not GananciaAdministracion.objects.filter(pago_id=pago_id).exists()
+
+        # 7. Verificar bitácora de auditoría inmutable
+        bitacora = BitacoraActividad.objects.filter(pago_id=pago_id, codigo_evento='PAG_ANULADO').first()
+        assert bitacora is not None
+        assert bitacora.nivel_severidad == 'CRITICO'
+
+    def test_anular_recibo_motivo_corto_rechazado(self, auth_client, prestamo_vigente):
+
+        creado = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('1845.98'), format='json')
+        pago_id = creado.data['id']
+        res_anular = auth_client.post(f'/api/pagos/{pago_id}/anular/', {'motivo': 'error'}, format='json')
+        assert res_anular.status_code == 400
+        assert 'motivo' in res_anular.data
+
+    def test_auditoria_usuario_desbloqueado_y_bloqueado(self, auth_client):
+        from API.models import Usuario, BitacoraActividad
+        u = Usuario.objects.create_user(
+            correo='inactivo@cavi.com',
+            password='Password123!',
+            nombre_completo='Usuario Inactivo',
+            activo=False
+        )
+
+        # 1. Desbloquear usuario
+        res = auth_client.patch(f'/api/usuarios/{u.id}/', {'activo': True}, format='json')
+        assert res.status_code == 200
+        u.refresh_from_db()
+        assert u.activo is True
+
+        bitacora_desbloqueo = BitacoraActividad.objects.filter(
+            modulo='SEGURIDAD',
+            codigo_evento='USU_DESBLOQUEADO'
+        ).first()
+        assert bitacora_desbloqueo is not None
+        assert bitacora_desbloqueo.nivel_severidad == 'ADVERTENCIA'
+        assert 'desbloqueado' in bitacora_desbloqueo.observaciones.lower()
+        assert bitacora_desbloqueo.diferencial_cambios['activo']['antes'] is False
+        assert bitacora_desbloqueo.diferencial_cambios['activo']['despues'] is True
+
+        # 2. Bloquear usuario
+        res_bloqueo = auth_client.patch(f'/api/usuarios/{u.id}/', {'activo': False}, format='json')
+        assert res_bloqueo.status_code == 200
+        bitacora_bloqueo = BitacoraActividad.objects.filter(
+            modulo='SEGURIDAD',
+            codigo_evento='USU_BLOQUEADO'
+        ).first()
+        assert bitacora_bloqueo is not None
+        assert bitacora_bloqueo.nivel_severidad == 'ADVERTENCIA'
+
+    def test_recibo_html_retorna_200_con_formato_institucional(self, auth_client, prestamo_vigente):
+        creado = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('1845.98'), format='json')
+        pago_id = creado.data['id']
+        codigo = creado.data['codigo_comprobante']
+
+        res = auth_client.get(f'/api/pagos/{pago_id}/recibo_html/')
+        assert res.status_code == 200
+        assert 'text/html' in res['Content-Type']
+        contenido = res.content.decode('utf-8')
+        assert codigo in contenido
+        assert 'RECIBO OFICIAL DE COBRO' in contenido
+        assert 'Art. 3180' in contenido
+        assert 'Prestatario / Pagador Conforme' in contenido
+        assert 'Cajero Receptor' in contenido
+
+    def test_recibo_html_anulado_muestra_marca_de_agua_y_aviso(self, auth_client, prestamo_vigente):
+        creado = auth_client.post(PAGO_URL.format(id=prestamo_vigente.id), pago_payload('1845.98'), format='json')
+        pago_id = creado.data['id']
+
+        # Anular pago
+        auth_client.post(f'/api/pagos/{pago_id}/anular/', {'motivo': 'Error en digitación de comprobante en caja'}, format='json')
+
+        res = auth_client.get(f'/api/pagos/{pago_id}/recibo_html/')
+        assert res.status_code == 200
+        contenido = res.content.decode('utf-8')
+        assert 'marca-agua-anulado' in contenido
+        assert 'banner-anulado' in contenido
+        assert 'COMPROBANTE OFICIAL ANULADO' in contenido

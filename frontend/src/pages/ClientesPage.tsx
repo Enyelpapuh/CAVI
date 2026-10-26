@@ -1,13 +1,14 @@
-import { useState, useEffect, useMemo } from 'preact/hooks';
+import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, DataTable, Icon, Input, Modal, Textarea, type Columna } from '../components/ui';
-import { clienteService } from '../services/api';
+import { Button, Card, DataTable, Icon, Input, Modal, Select, Textarea, Spinner, EmptyState, ConfirmModal, type Columna } from '../components/ui';
+import { clienteService, catalogoService } from '../services/api';
 import { useToast } from '../components/ui';
-import { fmtCantidad, fmtFecha, fmtFechaHora, iniciales } from '../lib/format';
+import { fmtMonto, fmtCantidad, fmtFecha, fmtFechaHora, iniciales } from '../lib/format';
 import { formatearCedula, formatearTelefono, desglosarCedula } from '../lib/cedula';
 import { useRouter } from '../lib/router';
-import type { Cliente } from '../types';
+import type { Cliente, CatActividadEconomica, CatDepartamento, CatMunicipio, Prestamo } from '../types';
+import { BotonPagare } from '../components/BotonPagare';
 
 const POR_PAGINA = 20;
 
@@ -18,6 +19,9 @@ const FORM_VACIO: Partial<Cliente> = {
   telefono: '',
   direccion: '',
   actividad_economica: '',
+  departamento: null,
+  municipio: null,
+  actividad_catalogo: null,
 };
 
 const ACTIVIDADES_RAPIDAS = [
@@ -44,12 +48,43 @@ export function ClientesPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  // Modal de Ficha Personal / Expediente
+  // Modal de Ficha Personal / Expediente e Historial Crediticio
   const [clienteFicha, setClienteFicha] = useState<Cliente | null>(null);
   const [showFicha, setShowFicha] = useState(false);
+  const [prestamosCliente, setPrestamosCliente] = useState<Prestamo[]>([]);
+  const [loadingPrestamos, setLoadingPrestamos] = useState(false);
+  const [filtroPrestamos, setFiltroPrestamos] = useState<'TODOS' | 'ACTIVOS' | 'FINALIZADOS'>('TODOS');
+
+  // Catálogos Normalizados
+  const [actividadesLista, setActividadesLista] = useState<CatActividadEconomica[]>([]);
+  const [departamentosLista, setDepartamentosLista] = useState<CatDepartamento[]>([]);
+  const [municipiosLista, setMunicipiosLista] = useState<CatMunicipio[]>([]);
 
   const toast = useToast();
-  const { navigate } = useRouter();
+  const { navigate, queryParams } = useRouter();
+
+
+  useEffect(() => {
+    Promise.all([catalogoService.actividades(), catalogoService.departamentos()])
+      .then(([act, dep]) => {
+        if (Array.isArray(act)) setActividadesLista(act);
+        if (Array.isArray(dep)) setDepartamentosLista(dep);
+      })
+      .catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    if (formData.departamento) {
+      catalogoService
+        .municipios(Number(formData.departamento))
+        .then((muns) => {
+          if (Array.isArray(muns)) setMunicipiosLista(muns);
+        })
+        .catch(() => setMunicipiosLista([]));
+    } else {
+      setMunicipiosLista([]);
+    }
+  }, [formData.departamento]);
 
   const fetchClientes = async () => {
     setLoading(true);
@@ -97,6 +132,7 @@ export function ClientesPage() {
         } as Cliente;
         setClienteFicha(clienteActualizado);
         setShowFicha(true);
+        if (clienteActualizado.id) cargarPrestamos(clienteActualizado.id);
       } else {
         const nuevo = await clienteService.create(formData as Omit<Cliente, 'id' | 'creado_en' | 'actualizado_en'>);
         toast.success('Cliente registrado exitosamente');
@@ -117,6 +153,7 @@ export function ClientesPage() {
         };
         setClienteFicha(clienteCreado);
         setShowFicha(true);
+        if (clienteCreado.id) cargarPrestamos(clienteCreado.id);
       }
     } catch (err: any) {
       const data = err.response?.data;
@@ -136,39 +173,117 @@ export function ClientesPage() {
       telefono: cliente.telefono,
       direccion: cliente.direccion,
       actividad_economica: cliente.actividad_economica || '',
+      departamento: cliente.departamento || null,
+      municipio: cliente.municipio || null,
+      actividad_catalogo: cliente.actividad_catalogo || null,
     });
     setFormErrors({});
     setShowFicha(false);
     setShowForm(true);
   };
 
-  const verExpediente = (cliente: Cliente) => {
+  const cargarPrestamos = useCallback(async (clienteId: number) => {
+    setLoadingPrestamos(true);
+    try {
+      const data = await clienteService.prestamos(clienteId);
+      setPrestamosCliente(Array.isArray(data) ? data : (data as any)?.results || []);
+    } catch {
+      setPrestamosCliente([]);
+    } finally {
+      setLoadingPrestamos(false);
+    }
+  }, []);
+
+  const verExpediente = useCallback((cliente: Cliente) => {
     setClienteFicha(cliente);
     setShowFicha(true);
+    setFiltroPrestamos('TODOS');
+    if (cliente?.id) {
+      cargarPrestamos(cliente.id);
+    }
+  }, [cargarPrestamos]);
+
+  const expedienteParam = queryParams.get('expediente') || queryParams.get('clienteId');
+
+  useEffect(() => {
+    if (!expedienteParam) return;
+    const numId = Number(expedienteParam);
+    if (!numId) return;
+
+    // Si ya está abierto este cliente en la ficha, evitar peticiones concurrentes
+    if (clienteFicha?.id === numId && showFicha) return;
+
+    const existente = clientes.find((c) => c.id === numId);
+    if (existente) {
+      verExpediente(existente);
+      return;
+    }
+
+    clienteService
+      .get(numId)
+      .then((c) => {
+        if (c && c.id) {
+          verExpediente(c);
+        }
+      })
+      .catch(() => {});
+  }, [expedienteParam]);
+
+  // Créditos activos vs finalizados del cliente
+  const prestamosActivos = useMemo(
+    () => prestamosCliente.filter((p) => p.estado !== 'CANCELADO'),
+    [prestamosCliente]
+  );
+
+  const prestamosFinalizados = useMemo(
+    () => prestamosCliente.filter((p) => p.estado === 'CANCELADO'),
+    [prestamosCliente]
+  );
+
+  const totalDeudaCliente = useMemo(
+    () => prestamosActivos.reduce((acc, p) => acc + (Number(p.saldo_deudor) || Number(p.saldo_insoluto) || 0), 0),
+    [prestamosActivos]
+  );
+
+  const prestamosVisibles = useMemo(() => {
+    if (filtroPrestamos === 'ACTIVOS') return prestamosActivos;
+    if (filtroPrestamos === 'FINALIZADOS') return prestamosFinalizados;
+    return prestamosCliente;
+  }, [filtroPrestamos, prestamosCliente, prestamosActivos, prestamosFinalizados]);
+
+  const [clienteADesactivar, setClienteADesactivar] = useState<Cliente | null>(null);
+  const [desactivando, setDesactivando] = useState(false);
+
+  const solicitarDesactivar = (cliente: Cliente) => {
+    setClienteADesactivar(cliente);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('¿Está seguro de deshabilitar este cliente?')) return;
+  const ejecutarDesactivar = async () => {
+    if (!clienteADesactivar) return;
+    setDesactivando(true);
     try {
-      await clienteService.delete(id);
-      toast.success('Cliente deshabilitado');
-      if (clienteFicha?.id === id) {
+      await clienteService.delete(clienteADesactivar.id);
+      toast.success('Cliente desactivado exitosamente');
+      if (clienteFicha?.id === clienteADesactivar.id) {
         setShowFicha(false);
       }
+      setClienteADesactivar(null);
       fetchClientes();
     } catch {
-      toast.error('Error al deshabilitar el cliente');
+      toast.error('Error al desactivar el cliente');
+    } finally {
+      setDesactivando(false);
     }
   };
 
-  const cerrarForm = () => {
+  const cerrarForm = useCallback(() => {
     setEditing(null);
     setFormData(FORM_VACIO);
     setFormErrors({});
     setShowForm(false);
-  };
+  }, []);
 
-  const cambiar = (campo: keyof Cliente, valor: string) => {
+  const cambiar = useCallback((campo: keyof Cliente, valor: string) => {
     let valorFinal = valor;
     if (campo === 'cedula' && !editing) {
       valorFinal = formatearCedula(valor);
@@ -177,10 +292,13 @@ export function ClientesPage() {
     }
 
     setFormData((prev) => ({ ...prev, [campo]: valorFinal }));
-    if (formErrors[campo as string]) {
-      setFormErrors((prev) => ({ ...prev, [campo as string]: '' }));
-    }
-  };
+    setFormErrors((prev) => {
+      if (prev[campo as string]) {
+        return { ...prev, [campo as string]: '' };
+      }
+      return prev;
+    });
+  }, [editing]);
 
   // Filtrado local por estado
   const clientesFiltrados = useMemo(() => {
@@ -222,9 +340,8 @@ export function ClientesPage() {
         return (
           <div class="flex items-center gap-3">
             <span
-              class={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-label-xs font-bold text-white shadow-sm ${
-                cliente.activo ? 'bg-slate-800' : 'bg-slate-400'
-              }`}
+              class={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-label-xs font-bold text-white shadow-sm ${cliente.activo ? 'bg-slate-800' : 'bg-slate-400'
+                }`}
               aria-hidden="true"
             >
               {inits}
@@ -280,11 +397,10 @@ export function ClientesPage() {
       width: '110px',
       render: (cliente) => (
         <span
-          class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-label-xs uppercase ${
-            cliente.activo
+          class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-label-xs uppercase ${cliente.activo
               ? 'border-green-200 bg-green-50 text-green-700 font-semibold'
               : 'border-slate-200 bg-slate-100 text-slate-500'
-          }`}
+            }`}
         >
           <span
             class={`h-1.5 w-1.5 rounded-full ${cliente.activo ? 'bg-green-600' : 'bg-slate-400'}`}
@@ -304,11 +420,12 @@ export function ClientesPage() {
           <Button
             variant="ghost"
             size="sm"
-            icon="visibility"
+            icon="history"
             onClick={() => verExpediente(cliente)}
-            title="Ver información personal completa"
+            title="Ver expediente e historial crediticio completo"
+            aria-label="Ficha e Historial"
           >
-            Ficha
+            Historial
           </Button>
           <Button
             variant="ghost"
@@ -324,7 +441,7 @@ export function ClientesPage() {
               variant="ghost"
               size="sm"
               icon="person_off"
-              onClick={() => handleDelete(cliente.id)}
+              onClick={() => solicitarDesactivar(cliente)}
               title="Deshabilitar cliente"
             >
               Deshabilitar
@@ -383,11 +500,10 @@ export function ClientesPage() {
               key={est}
               type="button"
               onClick={() => setFiltroEstado(est)}
-              class={`rounded-lg px-3 py-1.5 text-label-xs font-semibold uppercase tracking-wider transition-colors ${
-                filtroEstado === est
+              class={`rounded-lg px-3 py-1.5 text-label-xs font-semibold uppercase tracking-wider transition-colors ${filtroEstado === est
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900'
-              }`}
+                }`}
             >
               {est === 'TODOS' ? 'Todos' : est === 'ACTIVOS' ? 'Activos' : 'Inactivos'}
             </button>
@@ -455,7 +571,11 @@ export function ClientesPage() {
               icon="receipt_long"
               onClick={() => {
                 setShowFicha(false);
-                navigate('/reportes/estados-cuenta');
+                navigate(
+                  clienteFicha
+                    ? `/reportes/estados-cuenta?cliente=${clienteFicha.id}`
+                    : '/reportes/estados-cuenta'
+                );
               }}
             >
               Ver Estado de Cuenta
@@ -494,9 +614,8 @@ export function ClientesPage() {
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div class="flex items-center gap-3.5">
                 <span
-                  class={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-title-md font-bold text-white shadow-sm ${
-                    clienteFicha.activo ? 'bg-slate-900' : 'bg-slate-400'
-                  }`}
+                  class={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-title-md font-bold text-white shadow-sm ${clienteFicha.activo ? 'bg-slate-900' : 'bg-slate-400'
+                    }`}
                 >
                   {iniciales(`${clienteFicha.nombres} ${clienteFicha.apellidos}`)}
                 </span>
@@ -510,16 +629,14 @@ export function ClientesPage() {
                       {clienteFicha.cedula}
                     </span>
                     <span
-                      class={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-label-xs uppercase font-bold ${
-                        clienteFicha.activo
+                      class={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-label-xs uppercase font-bold ${clienteFicha.activo
                           ? 'bg-green-100 text-green-800'
                           : 'bg-slate-200 text-slate-600'
-                      }`}
+                        }`}
                     >
                       <span
-                        class={`h-1.5 w-1.5 rounded-full ${
-                          clienteFicha.activo ? 'bg-green-600' : 'bg-slate-500'
-                        }`}
+                        class={`h-1.5 w-1.5 rounded-full ${clienteFicha.activo ? 'bg-green-600' : 'bg-slate-500'
+                          }`}
                       />
                       {clienteFicha.activo ? 'Cliente Activo' : 'Inactivo'}
                     </span>
@@ -663,6 +780,285 @@ export function ClientesPage() {
                 </div>
               </div>
             </div>
+
+            {/* Sección de Historial Crediticio: Créditos Activos y Finalizados */}
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4 shadow-xs">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+                <div class="flex items-center gap-2.5">
+                  <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-xs">
+                    <Icon name="history_edu" size={20} />
+                  </div>
+                  <div>
+                    <h4 class="text-body-md font-bold text-slate-900">
+                      Historial Crediticio del Prestatario
+                    </h4>
+                    <p class="text-label-xs text-slate-500">
+                      Créditos activos en cobro y obligaciones finalizadas / canceladas
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="sync"
+                    loading={loadingPrestamos}
+                    onClick={() => {
+                      if (clienteFicha?.id) cargarPrestamos(clienteFicha.id);
+                    }}
+                    title="Actualizar listado de créditos del cliente"
+                  >
+                    Actualizar
+                  </Button>
+
+                  {/* Pestañas de filtrado de créditos */}
+                  <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setFiltroPrestamos('TODOS')}
+                    class={`rounded-md px-3 py-1 text-xs font-semibold transition-all ${
+                      filtroPrestamos === 'TODOS'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Todos ({prestamosCliente.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFiltroPrestamos('ACTIVOS')}
+                    class={`rounded-md px-3 py-1 text-xs font-semibold transition-all ${
+                      filtroPrestamos === 'ACTIVOS'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Activos ({prestamosActivos.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFiltroPrestamos('FINALIZADOS')}
+                    class={`rounded-md px-3 py-1 text-xs font-semibold transition-all ${
+                      filtroPrestamos === 'FINALIZADOS'
+                        ? 'bg-slate-800 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Finalizados ({prestamosFinalizados.length})
+                  </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* KPI Bar del Historial */}
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-center">
+                  <span class="block text-label-xs font-bold uppercase tracking-wider text-slate-500">
+                    Total Histórico
+                  </span>
+                  <span class="text-body-md font-black text-slate-900">
+                    {prestamosCliente.length} crédito{prestamosCliente.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div class="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 text-center">
+                  <span class="block text-label-xs font-bold uppercase tracking-wider text-emerald-700">
+                    Créditos Activos
+                  </span>
+                  <span class="text-body-md font-black text-emerald-800">
+                    {prestamosActivos.length} en cobro
+                  </span>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-100/60 p-3 text-center">
+                  <span class="block text-label-xs font-bold uppercase tracking-wider text-slate-600">
+                    Finalizados
+                  </span>
+                  <span class="text-body-md font-black text-slate-700">
+                    {prestamosFinalizados.length} cancelados
+                  </span>
+                </div>
+                <div class="rounded-xl border border-blue-100 bg-blue-50/50 p-3 text-center">
+                  <span class="block text-label-xs font-bold uppercase tracking-wider text-blue-700">
+                    Deuda Insoluta
+                  </span>
+                  <span class="text-body-md font-black text-blue-900">
+                    {fmtMonto(totalDeudaCliente)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Listado de préstamos del cliente */}
+              {loadingPrestamos ? (
+                <div class="flex justify-center py-8">
+                  <Spinner size={32} />
+                </div>
+              ) : prestamosVisibles.length === 0 ? (
+                <div class="py-6">
+                  <EmptyState
+                    icon="receipt_long"
+                    title={
+                      filtroPrestamos === 'ACTIVOS'
+                        ? 'Sin créditos activos en este momento'
+                        : filtroPrestamos === 'FINALIZADOS'
+                        ? 'Sin créditos finalizados o cancelados'
+                        : 'El prestatario no tiene créditos registrados'
+                    }
+                    description={
+                      filtroPrestamos === 'TODOS'
+                        ? 'Puede formalizar su primer crédito multifondo utilizando el botón superior.'
+                        : 'No se encontraron préstamos que coincidan con el filtro seleccionado.'
+                    }
+                    action={
+                      filtroPrestamos === 'TODOS' && clienteFicha.activo ? (
+                        <Button
+                          size="sm"
+                          icon="post_add"
+                          onClick={() => {
+                            setShowFicha(false);
+                            navigate('/prestamos/nuevo');
+                          }}
+                        >
+                          Nuevo Préstamo
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              ) : (
+                <div class="overflow-x-auto rounded-xl border border-slate-200">
+                  <table class="w-full text-left border-collapse text-body-sm">
+                    <thead>
+                      <tr class="border-b border-slate-200 bg-slate-50/80 text-label-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th class="py-2.5 px-3">Préstamo</th>
+                        <th class="py-2.5 px-3">Condiciones</th>
+                        <th class="py-2.5 px-3 text-right">Monto Original</th>
+                        <th class="py-2.5 px-3 text-right">Saldo Deudor</th>
+                        <th class="py-2.5 px-3">Estado</th>
+                        <th class="py-2.5 px-3 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      {prestamosVisibles.map((p) => {
+                        const esCancelado = p.estado === 'CANCELADO';
+                        const esMora = p.estado === 'EN_MORA' || (p.dias_atraso ?? 0) > (p.dias_gracia || 4);
+                        const esGracia = p.estado === 'EN_GRACIA' || ((p.dias_atraso ?? 0) > 0 && !esMora);
+
+                        return (
+                          <tr key={p.id} class="hover:bg-slate-50/80 transition-colors">
+                            {/* ID y Fechas */}
+                            <td class="py-2.5 px-3">
+                              <span class="font-bold text-slate-900 block">
+                                Préstamo #{p.id}
+                              </span>
+                              <span class="text-[11px] text-slate-500 font-mono block">
+                                Otorgado: {fmtFecha(p.fecha_desembolso)}
+                              </span>
+                            </td>
+
+                            {/* Condiciones */}
+                            <td class="py-2.5 px-3 text-body-sm">
+                              <span class="font-semibold text-slate-800 block">
+                                {(Number(p.tasa_interes) * 100).toFixed(2)}% mensual
+                              </span>
+                              <span class="text-[11px] text-slate-500 block">
+                                {p.plazo_meses > 0 ? `${p.plazo_meses} meses (${p.periodicidad})` : 'Plazo Indefinido'}
+                              </span>
+                            </td>
+
+                            {/* Monto Original */}
+                            <td class="py-2.5 px-3 text-right font-medium text-slate-800 tnum">
+                              {fmtMonto(p.monto_principal)}
+                            </td>
+
+                            {/* Saldo Deudor */}
+                            <td class="py-2.5 px-3 text-right">
+                              {esCancelado ? (
+                                <span class="font-mono text-xs font-semibold text-slate-400">
+                                  C$0.00 (Saldado)
+                                </span>
+                              ) : (
+                                <span class="font-bold text-slate-900 block tnum">
+                                  {fmtMonto(p.saldo_deudor || p.saldo_insoluto)}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Estado con Badge */}
+                            <td class="py-2.5 px-3">
+                              {esCancelado ? (
+                                <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-xs font-bold border border-slate-200">
+                                  <Icon name="check_circle" size={14} class="text-emerald-600" />
+                                  Finalizado / Saldado
+                                </span>
+                              ) : esMora ? (
+                                <span class="inline-flex items-center gap-1 rounded-full bg-rose-50 text-rose-700 px-2.5 py-0.5 text-xs font-bold border border-rose-200">
+                                  <span class="h-1.5 w-1.5 rounded-full bg-rose-600" />
+                                  En Mora ({(p as any).dias_mora ?? p.dias_atraso}d)
+                                </span>
+                              ) : esGracia ? (
+                                <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 px-2.5 py-0.5 text-xs font-bold border border-amber-200">
+                                  <span class="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                                  Límite de Gracia
+                                </span>
+                              ) : (
+                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-0.5 text-xs font-bold border border-emerald-200">
+                                  <span class="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                                  Activo / Al Día
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Acciones por Préstamo */}
+                            <td class="py-2.5 px-3 text-right">
+                              <div class="flex items-center justify-end gap-1.5">
+                                <BotonPagare
+                                  prestamoId={p.id}
+                                  size="sm"
+                                  variant="secondary"
+                                  label="Ver Pagaré"
+                                  abrirVentana={true}
+                                  onError={toast.error}
+                                />
+
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  icon="receipt_long"
+                                  onClick={() => {
+                                    setShowFicha(false);
+                                    navigate(
+                                      `/reportes/estados-cuenta?cliente=${clienteFicha.id}&prestamo=${p.id}`
+                                    );
+                                  }}
+                                  title="Ver estado de cuenta de este crédito"
+                                >
+                                  Estado Cuenta
+                                </Button>
+
+                                {!esCancelado && (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    icon="payments"
+                                    onClick={() => {
+                                      setShowFicha(false);
+                                      navigate('/cobros');
+                                    }}
+                                    title="Ir a registrar abono"
+                                  >
+                                    Cobrar
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Modal>
@@ -747,8 +1143,41 @@ export function ClientesPage() {
               hint="Número celular para llamadas y notificaciones de cobro"
             />
 
+            <div class="grid gap-3 sm:grid-cols-2">
+              <Select
+                label="Departamento"
+                value={String(formData.departamento || '')}
+                onChange={(val) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    departamento: val ? Number(val) : null,
+                    municipio: null,
+                  }));
+                }}
+                options={[
+                  { value: '', label: 'Seleccionar Departamento' },
+                  ...departamentosLista.map((d) => ({ value: String(d.id), label: d.nombre })),
+                ]}
+              />
+              <Select
+                label="Municipio"
+                value={String(formData.municipio || '')}
+                onChange={(val) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    municipio: val ? Number(val) : null,
+                  }));
+                }}
+                disabled={!formData.departamento || municipiosLista.length === 0}
+                options={[
+                  { value: '', label: 'Seleccionar Municipio' },
+                  ...municipiosLista.map((m) => ({ value: String(m.id), label: m.nombre })),
+                ]}
+              />
+            </div>
+
             <Textarea
-              label="Dirección"
+              label="Dirección exacta"
               value={formData.direccion || ''}
               onInput={(valor) => cambiar('direccion', valor)}
               placeholder="Barrio, calle, número de casa o punto de referencia exacto"
@@ -758,35 +1187,57 @@ export function ClientesPage() {
             />
           </div>
 
-          {/* Bloque 3: Actividad Económica con accesos rápidos */}
+          {/* Bloque 3: Actividad Económica con accesos rápidos del catálogo */}
           <div class="space-y-2 pt-1">
             <Input
               label="Actividad Económica"
               value={formData.actividad_economica || ''}
               onInput={(valor) => cambiar('actividad_economica', valor)}
               placeholder="Ej. Pulpería, Comercio, Transporte..."
-              hint="Opcional: rubro o fuente de ingresos del prestatario"
+              hint="Rubro económico o fuente de ingresos del prestatario"
             />
 
             <div class="flex flex-wrap gap-1.5 pt-1">
-              {ACTIVIDADES_RAPIDAS.map((act) => (
-                <button
-                  type="button"
-                  key={act}
-                  onClick={() => cambiar('actividad_economica', act)}
-                  class={`rounded-full border px-2.5 py-1 text-label-xs transition-colors ${
-                    formData.actividad_economica === act
-                      ? 'border-green-600 bg-green-50 font-semibold text-green-700'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  + {act}
-                </button>
-              ))}
+              {(actividadesLista.length > 0 ? actividadesLista.map((a) => a.nombre) : ACTIVIDADES_RAPIDAS).map((act) => {
+                const actObj = actividadesLista.find((a) => a.nombre === act);
+                return (
+                  <button
+                    type="button"
+                    key={act}
+                    onClick={() => {
+                      cambiar('actividad_economica', act);
+                      if (actObj) {
+                        setFormData((prev) => ({ ...prev, actividad_catalogo: actObj.id }));
+                      }
+                    }}
+                    class={`rounded-full border px-2.5 py-1 text-label-xs transition-colors ${formData.actividad_economica === act
+                        ? 'border-green-600 bg-green-50 font-semibold text-green-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                  >
+                    + {act}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </form>
       </Modal>
+
+      {/* MODAL 3: CONFIRMACIÓN PARA DESACTIVAR CLIENTE */}
+      {clienteADesactivar && (
+        <ConfirmModal
+          open={Boolean(clienteADesactivar)}
+          onClose={() => setClienteADesactivar(null)}
+          onConfirm={ejecutarDesactivar}
+          loading={desactivando}
+          title="Desactivar Prestatario"
+          message={`¿Está seguro de desactivar al prestatario "${clienteADesactivar.nombres} ${clienteADesactivar.apellidos}" (Cédula: ${clienteADesactivar.cedula})? Su expediente pasará a estado inactivo.`}
+          variant="danger"
+          confirmText="Desactivar"
+          cancelText="Cancelar"
+        />
+      )}
     </Layout>
   );
 }

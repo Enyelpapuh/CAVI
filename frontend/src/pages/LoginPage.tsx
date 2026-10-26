@@ -1,8 +1,10 @@
 import { useState } from 'preact/hooks';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ui';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const toast = useToast();
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,7 +18,14 @@ export function LoginPage() {
     try {
       await login(correo, password);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Credenciales inválidas');
+      const data = err.response?.data;
+      const mensaje =
+        data?.detail ||
+        (Array.isArray(data?.non_field_errors) ? data.non_field_errors.join(' ') : '') ||
+        (typeof data === 'string' ? data : '') ||
+        'Credenciales inválidas. Verifique su correo y contraseña.';
+      setError(mensaje);
+      toast.error(mensaje);
     } finally {
       setLoading(false);
     }

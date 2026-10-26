@@ -232,3 +232,68 @@ class TestEstadoEfectivoEnListado:
         assert fila['dias_mora'] == 5
         assert Decimal(fila['mora_pendiente']) == Decimal('104.17')
         assert Decimal(fila['saldo_deudor']) == Decimal('51250.00') + Decimal('104.17')
+
+    def test_cancelar_contrato_dentro_tolerancia_restituye_fondos(self, auth_client, cliente, crear_fondo):
+        from API.models import Prestamo, MovimientoFondo, BitacoraActividad
+        fondo = crear_fondo(capital='50000.00')
+        req = payload(cliente.id, [{'fondo': fondo.id, 'monto_aportado': '50000.00', 'porcentaje_pi': '1.0000'}])
+        crear_res = auth_client.post(PRESTAMO_URL, req, format='json')
+        assert crear_res.status_code == 201
+        prestamo_id = crear_res.data['id']
+
+        fondo.refresh_from_db()
+        assert str(fondo.saldo_disponible) == '0.00'
+
+        motivo = 'Cliente solicita rescisión de contrato por desistimiento inmediato'
+        res_cancelar = auth_client.post(f'/api/prestamos/{prestamo_id}/cancelar/', {'motivo': motivo}, format='json')
+        assert res_cancelar.status_code == 200
+        assert res_cancelar.data['prestamo']['estado'] == 'CANCELADO'
+
+        # Verificar reversión íntegra de fondos en base de datos
+        fondo.refresh_from_db()
+        assert str(fondo.saldo_disponible) == '50000.00'
+
+        # Verificar movimiento de reintegro de desembolso
+        mov = MovimientoFondo.objects.filter(fondo=fondo, tipo=MovimientoFondo.TipoMovimiento.REINTEGRO).first()
+        assert mov is not None
+        assert str(mov.monto) == '50000.00'
+        assert str(mov.saldo_posterior) == '50000.00'
+
+        # Verificar auditoría
+        bitacora = BitacoraActividad.objects.filter(prestamo_id=prestamo_id, codigo_evento='PRESTAMO_CANCELADO').first()
+        assert bitacora is not None
+        assert bitacora.nivel_severidad == 'CRITICO'
+
+    def test_cancelar_contrato_con_pagos_activos_rechazado(self, auth_client, cliente, crear_fondo):
+        fondo = crear_fondo(capital='50000.00')
+        req = payload(cliente.id, [{'fondo': fondo.id, 'monto_aportado': '50000.00', 'porcentaje_pi': '1.0000'}])
+        crear_res = auth_client.post(PRESTAMO_URL, req, format='json')
+        assert crear_res.status_code == 201
+        prestamo_id = crear_res.data['id']
+
+        # Asentar un pago
+        auth_client.post(f'/api/prestamos/{prestamo_id}/pagos/', {
+            'monto': '1845.98',
+            'fecha_pago': '2026-10-23',
+            'metodo_pago': 'EFECTIVO'
+        }, format='json')
+
+        # Intentar cancelar el contrato sin anular primero el pago
+        res = auth_client.post(f'/api/prestamos/{prestamo_id}/cancelar/', {
+            'motivo': 'Intento de cancelación con recibo vigente activo'
+        }, format='json')
+        assert res.status_code == 400
+        assert 'recibo(s) de pago activo(s)' in str(res.data)
+
+    def test_cancelar_contrato_motivo_corto_rechazado(self, auth_client, cliente, crear_fondo):
+        fondo = crear_fondo(capital='50000.00')
+        req = payload(cliente.id, [{'fondo': fondo.id, 'monto_aportado': '50000.00', 'porcentaje_pi': '1.0000'}])
+        crear_res = auth_client.post(PRESTAMO_URL, req, format='json')
+        assert crear_res.status_code == 201
+        prestamo_id = crear_res.data['id']
+
+        res = auth_client.post(f'/api/prestamos/{prestamo_id}/cancelar/', {'motivo': 'muy corto'}, format='json')
+        assert res.status_code == 400
+        assert 'motivo' in res.data
+
+

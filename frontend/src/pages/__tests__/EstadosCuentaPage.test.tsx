@@ -1,6 +1,13 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/preact';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: vi.fn(() => ({
+    user: { id: 1, rol: 'ADMINISTRADOR', nombre_completo: 'Admin General' },
+    isAuthenticated: true,
+  })),
+}));
+
 vi.mock('../../services/api', () => ({
   clienteService: {
     list: vi.fn(),
@@ -8,6 +15,9 @@ vi.mock('../../services/api', () => ({
   prestamoService: {
     list: vi.fn(),
     amortizacion: vi.fn(),
+    pagarPagare: vi.fn(),
+    abrirPagareHtml: vi.fn(),
+    cancelar: vi.fn(),
   },
   pagoService: {
     list: vi.fn(),
@@ -112,7 +122,7 @@ describe('EstadosCuentaPage (Estado de Cuenta de Clientes)', () => {
 
     // Debe cargar la ficha del titular
     await waitFor(() => {
-      expect(screen.getByText('001-201085-0002B')).toBeInTheDocument();
+      expect(screen.getByText(/001-201085-0002B/)).toBeInTheDocument();
       expect(screen.getByText('Barrio Altagracia, Managua')).toBeInTheDocument();
     });
 
@@ -124,11 +134,61 @@ describe('EstadosCuentaPage (Estado de Cuenta de Clientes)', () => {
       expect(screen.getByText('Total Cobrado')).toBeInTheDocument();
     });
 
-    // Historial de pagos
-    expect(screen.getByText('REC-2026-0001')).toBeInTheDocument();
-    expect(screen.getByText('REC-2026-0002')).toBeInTheDocument();
+    // Historial de pagos y cronograma
+    await waitFor(() => {
+      expect(screen.getByText('REC-2026-0001')).toBeInTheDocument();
+      expect(screen.getByText('REC-2026-0002')).toBeInTheDocument();
+      expect(screen.getByText('Cronograma de Cuotas Programadas')).toBeInTheDocument();
+    });
+  });
 
-    // Cronograma de cuotas
-    expect(screen.getByText('Cronograma de Cuotas Programadas')).toBeInTheDocument();
+  it('permite a un administrador abrir el modal y rescindir un contrato sin pagos activos', async () => {
+    (clienteService.list as any).mockResolvedValue({ results: [CLIENTE] });
+    (prestamoService.list as any).mockResolvedValue({
+      results: [{ ...PRESTAMO, creado_en: new Date().toISOString() }],
+    });
+    // Sin pagos activos
+    (pagoService.list as any).mockResolvedValue({ results: [] });
+    (prestamoService.amortizacion as any).mockResolvedValue({ periodos: [] });
+    (prestamoService.cancelar as any).mockResolvedValue({
+      mensaje: 'Préstamo cancelado y fondos restituidos',
+    });
+
+    render(<EstadosCuentaPage />);
+
+    // Buscar y seleccionar cliente
+    fireEvent.focus(screen.getByLabelText('Cliente'));
+    fireEvent.input(screen.getByLabelText('Cliente'), { target: { value: 'Carlos' } });
+    await waitFor(() => expect(screen.getByText('Carlos Mendoza')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Carlos Mendoza'));
+
+    // Botón Cancelar Contrato debe estar disponible para el administrador
+    await waitFor(() => {
+      expect(screen.getByText('Cancelar Contrato')).toBeInTheDocument();
+    });
+
+    // Abrir modal de rescisión
+    fireEvent.click(screen.getByText('Cancelar Contrato'));
+    await waitFor(() => {
+      expect(screen.getByText('Rescisión de Contrato de Préstamo')).toBeInTheDocument();
+    });
+
+    // Escribir motivo circunstanciado de al menos 15 caracteres
+    const textarea = screen.getByPlaceholderText(/Describa de manera detallada/i);
+    fireEvent.input(textarea, {
+      target: { value: 'Error en la formalización notarial del crédito' },
+    });
+
+    const btnConfirmar = screen.getByText('Confirmar Cancelación');
+    expect(btnConfirmar).not.toBeDisabled();
+    fireEvent.click(btnConfirmar);
+
+    await waitFor(() => {
+      expect(prestamoService.cancelar).toHaveBeenCalledWith(
+        101,
+        'Error en la formalización notarial del crédito'
+      );
+    });
   });
 });
+

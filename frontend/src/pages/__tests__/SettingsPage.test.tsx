@@ -26,7 +26,16 @@ vi.mock('../../context/AuthContext', () => ({
 }));
 
 import { configuracionService } from '../../services/api';
+import { ToastProvider } from '../../components/ui';
 import { SettingsPage } from '../SettingsPage';
+
+function renderPagina() {
+  return render(
+    <ToastProvider>
+      <SettingsPage />
+    </ToastProvider>
+  );
+}
 
 const CONFIG_MOCK = {
   id: 1,
@@ -50,13 +59,13 @@ beforeEach(() => {
 describe('SettingsPage (Políticas y Configuración del Sistema)', () => {
   it('carga y muestra los parámetros y políticas configuradas', async () => {
     (configuracionService.get as any).mockResolvedValue(CONFIG_MOCK);
-    render(<SettingsPage />);
+    renderPagina();
 
     expect(screen.getByText('Configuración del Sistema')).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Modo Operativo del Sistema')).toBeInTheDocument();
-      expect(screen.getByText('Digitalización Flexible')).toBeInTheDocument();
+      expect(screen.getAllByText('Digitalización Flexible')[0]).toBeInTheDocument();
       expect(screen.getByText('Días de Gracia de Cobranza')).toBeInTheDocument();
       expect(screen.getByText(/Préstamos de Periodo Indefinido/i)).toBeInTheDocument();
     });
@@ -70,7 +79,7 @@ describe('SettingsPage (Políticas y Configuración del Sistema)', () => {
       permitir_superar_usura: true,
     });
 
-    render(<SettingsPage />);
+    renderPagina();
 
     await waitFor(() => {
       expect(screen.getByText('Guardar Configuración')).toBeInTheDocument();
@@ -92,7 +101,7 @@ describe('SettingsPage (Políticas y Configuración del Sistema)', () => {
     });
     (configuracionService.get as any).mockResolvedValue(CONFIG_MOCK);
 
-    render(<SettingsPage />);
+    renderPagina();
 
     await waitFor(() => {
       expect(screen.getByText(/Solo el rol/i)).toBeInTheDocument();

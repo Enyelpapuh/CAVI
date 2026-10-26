@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <title>Recibo Oficial {{ pago.codigo_comprobante }} - CAVI</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 15mm 20mm 15mm 20mm;
+    }
+
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 9pt;
+      color: #1e293b;
+      line-height: 1.4;
+      margin: 0;
+      padding: 0;
+      background-color: #f1f5f9;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    /* ================= BARRA DE CONTROL EN NAVEGADOR ================= */
+    .barra-acciones-navegador {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background-color: #0f172a;
+      color: #ffffff;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+      margin-bottom: 24px;
+    }
+
+    .barra-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .barra-titulo {
+      font-size: 11pt;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .barra-subtitulo {
+      font-size: 8pt;
+      color: #94a3b8;
+      font-family: monospace;
+    }
+
+    .barra-botones {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-accion {
+      font-family: inherit;
+      font-size: 9pt;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+      border: none;
+    }
+
+    .btn-imprimir {
+      background-color: #059669;
+      color: #ffffff;
+    }
+
+    .btn-imprimir:hover {
+      background-color: #047857;
+    }
+
+    .btn-cerrar {
+      background-color: #334155;
+      color: #f8fafc;
+    }
+
+    .btn-cerrar:hover {
+      background-color: #475569;
+    }
+
+    /* ================= PÁGINA IMPRIMIBLE ================= */
+    .pagina-documento {
+      max-width: 800px;
+      margin: 0 auto 30px auto;
+      background: #ffffff;
+      padding: 40px 48px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+      box-sizing: border-box;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ================= CABECERA ================= */
+    .cabecera-principal {
+      width: 100%;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+
+    .marca-box h1 {
+      margin: 0;
+      font-size: 24pt;
+      font-weight: 900;
+      color: #0f172a;
+      letter-spacing: 1.5px;
+      line-height: 1;
+    }
+
+    .marca-box p {
+      margin: 4px 0 0 0;
+      font-size: 8.5pt;
+      color: #475569;
+      font-weight: 600;
+    }
+
+    .doc-info-box {
+      text-align: right;
+    }
+
+    .doc-info-box h2 {
+      margin: 0;
+      font-size: 11pt;
+      color: #0f172a;
+      letter-spacing: 0.5px;
+      font-weight: 800;
+    }
+
+    .doc-numero {
+      font-size: 14pt;
+      font-weight: 900;
+      color: #047857;
+      font-family: monospace;
+      margin: 3px 0;
+    }
+
+    .doc-numero.anulado {
+      color: #dc2626;
+      text-decoration: line-through;
+    }
+
+    .doc-control {
+      font-size: 7.5pt;
+      color: #64748b;
+      font-family: monospace;
+    }
+
+    /* ================= MARCA DE AGUA ANULADO ================= */
+    .marca-agua-anulado {
+      position: absolute;
+      top: 35%;
+      left: 10%;
+      right: 10%;
+      transform: rotate(-25deg);
+      border: 6px dashed rgba(220, 38, 38, 0.65);
+      background-color: rgba(255, 255, 255, 0.88);
+      padding: 16px 24px;
+      text-align: center;
+      z-index: 50;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      pointer-events: none;
+    }
+
+    .marca-agua-anulado h3 {
+      margin: 0;
+      font-size: 32pt;
+      font-weight: 900;
+      color: #b91c1c;
+      letter-spacing: 3px;
+    }
+
+    .marca-agua-anulado p {
+      margin: 6px 0 0 0;
+      font-size: 9pt;
+      font-weight: 800;
+      color: #991b1b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* ================= BANNER ANULADO ================= */
+    .banner-anulado {
+      background-color: #fef2f2;
+      border: 1.5px solid #ef4444;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      color: #991b1b;
+      text-align: center;
+    }
+
+    .banner-anulado-titulo {
+      font-weight: 900;
+      font-size: 11pt;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .banner-anulado-desc {
+      font-size: 8.5pt;
+      margin-top: 4px;
+      color: #7f1d1d;
+    }
+
+    .banner-anulado-motivo {
+      margin-top: 6px;
+      font-size: 8.5pt;
+      font-weight: 700;
+      font-style: italic;
+      background-color: #ffffff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #fca5a5;
+      display: inline-block;
+    }
+
+    /* ================= TABLAS DE DATOS ================= */
+    .tabla-datos {
+      margin-bottom: 16px;
+    }
+
+    .tabla-datos td {
+      padding: 5px 8px;
+      font-size: 9pt;
+      vertical-align: top;
+    }
+
+    .tabla-datos .etiqueta {
+      width: 25%;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    .tabla-datos .valor {
+      width: 75%;
+      color: #0f172a;
+      font-weight: 700;
+    }
+
+    .tabla-datos tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+
+    /* ================= MONTO TOTAL BOX ================= */
+    .caja-monto {
+      background-color: #ecfdf5;
+      border: 1.5px solid #a7f3d0;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 16px 0;
+    }
+
+    .caja-monto.anulada {
+      background-color: #fef2f2;
+      border-color: #fca5a5;
+    }
+
+    .caja-monto-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .caja-monto-label {
+      font-size: 9pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #065f46;
+      letter-spacing: 0.5px;
+    }
+
+    .caja-monto.anulada .caja-monto-label {
+      color: #991b1b;
+    }
+
+    .caja-monto-valor {
+      font-size: 20pt;
+      font-weight: 900;
+      color: #047857;
+      font-family: monospace;
+    }
+
+    .caja-monto.anulada .caja-monto-valor {
+      color: #b91c1c;
+      text-decoration: line-through;
+    }
+
+    .caja-monto-letras {
+      font-size: 8.5pt;
+      color: #0f172a;
+      font-style: italic;
+      font-weight: 600;
+      margin-top: 4px;
+      border-top: 1px dashed #a7f3d0;
+      padding-top: 6px;
+    }
+
+    .caja-monto.anulada .caja-monto-letras {
+      border-top-color: #fca5a5;
+      color: #7f1d1d;
+    }
+
+    /* ================= DESGLOSE CONTABLE ================= */
+    .tabla-desglose {
+      width: 100%;
+      margin: 16px 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .tabla-desglose th {
+      background-color: #0f172a;
+      color: #ffffff;
+      padding: 7px 10px;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: left;
+    }
+
+    .tabla-desglose td {
+      padding: 6px 10px;
+      font-size: 8.5pt;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .tabla-desglose .num {
+      text-align: right;
+      font-family: monospace;
+      font-weight: 700;
+    }
+
+    .tabla-desglose tr:last-child td {
+      border-bottom: none;
+      background-color: #f8fafc;
+      font-weight: 800;
+      font-size: 9.5pt;
+    }
+
+    /* ================= SECCIÓN LEY 977 ================= */
+    .seccion-ley {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-top: 14px;
+      font-size: 8pt;
+    }
+
+    .seccion-ley-titulo {
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #334155;
+      margin-bottom: 6px;
+      font-size: 7.5pt;
+      letter-spacing: 0.5px;
+    }
+
+    /* ================= FIRMAS ================= */
+    .bloque-firmas {
+      width: 100%;
+      margin-top: 36px;
+    }
+
+    .bloque-firmas td {
+      width: 45%;
+      text-align: center;
+      vertical-align: bottom;
+    }
+
+    .bloque-firmas .separador {
+      width: 10%;
+    }
+
+    .linea-firma {
+      border-top: 1.5px solid #0f172a;
+      padding-top: 4px;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .rol-firma {
+      font-size: 7.5pt;
+      color: #64748b;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    /* ================= PIE DE PÁGINA ================= */
+    .pie-documento {
+      margin-top: 24px;
+      padding-top: 8px;
+      border-top: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 7.5pt;
+      color: #94a3b8;
+    }
+
+    /* ================= ESTILOS DE IMPRESIÓN ================= */
+    @media print {
+      body {
+        background-color: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      .barra-acciones-navegador {
+        display: none !important;
+      }
+
+      .pagina-documento {
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Barra de control en navegador -->
+  <div class="barra-acciones-navegador">
+    <div class="barra-info">
+      <span class="barra-titulo">Comprobante Oficial de Pago &middot; CAVI</span>
+      <span class="barra-subtitulo">Recibo N.° {{ pago.codigo_comprobante }} &middot; Control: {{ codigo_seguridad }}</span>
+    </div>
+    <div class="barra-botones">
+      <button type="button" class="btn-accion btn-imprimir" onclick="window.print()">
+        Imprimir Recibo / Guardar PDF
+      </button>
+      <button type="button" class="btn-accion btn-cerrar" onclick="window.close()">
+        Cerrar
+      </button>
+    </div>
+  </div>
+
+  <div class="pagina-documento">
+    <!-- Marca de agua si el comprobante está anulado -->
+    {% if pago.estado == 'ANULADO' %}
+    <div class="marca-agua-anulado">
+      <h3>ANULADO &middot; INV&Aacute;LIDO</h3>
+      <p>Operación Revertida Contablemente &middot; Sin Validez Fiscal ni Legal</p>
+    </div>
+    {% endif %}
+
+    <!-- Cabecera Institucional -->
+    <table class="cabecera-principal">
+      <tr>
+        <td class="marca-box" style="width: 50%; vertical-align: middle;">
+          <h1>CAVI</h1>
+          <p>Control y Administración de Valores e Inversiones<br>Comprobante Oficial de Caja &middot; Managua, Nicaragua</p>
+        </td>
+        <td class="doc-info-box" style="width: 50%; vertical-align: middle;">
+          <h2>RECIBO OFICIAL DE COBRO</h2>
+          <div class="doc-numero {% if pago.estado == 'ANULADO' %}anulado{% endif %}">
+            {{ pago.codigo_comprobante }}
+          </div>
+          <div class="doc-control">Control: {{ codigo_seguridad }} &middot; Fecha: {{ pago.fecha_pago|date:"d/m/Y" }}</div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Banner si está anulado -->
+    {% if pago.estado == 'ANULADO' %}
+    <div class="banner-anulado">
+      <div class="banner-anulado-titulo">COMPROBANTE OFICIAL ANULADO &middot; OPERACIÓN REVERTIDA</div>
+      <div class="banner-anulado-desc">
+        Este recibo fue invalidado administrativamente por <strong>{{ pago.anulado_por.nombre_completo|default:pago.anulado_por|default:"Administrador CAVI" }}</strong>
+        el {{ pago.anulado_en|date:"d/m/Y H:i" }}.
+      </div>
+      {% if pago.motivo_anulacion %}
+      <div class="banner-anulado-motivo">
+        Causa circunstanciada: &ldquo;{{ pago.motivo_anulacion }}&rdquo;
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Ficha de la Transacción -->
+    <table class="tabla-datos">
+      <tr>
+        <td class="etiqueta">Recibido de:</td>
+        <td class="valor">{{ cliente.nombres }} {{ cliente.apellidos }} (Cédula: {{ cliente.cedula }})</td>
+      </tr>
+      <tr>
+        <td class="etiqueta">Préstamo N.°:</td>
+        <td class="valor">#{{ prestamo.id }} &middot; Principal Original: C$ {{ prestamo.monto_principal|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="etiqueta">Método de Cobro:</td>
+        <td class="valor">
+          {{ pago.get_metodo_pago_display|default:pago.metodo_pago }}
+          {% if pago.referencia_bancaria %}&middot; Ref: {{ pago.referencia_bancaria }}{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td class="etiqueta">Cajero / Receptor:</td>
+        <td class="valor">{{ usuario_nombre }} &middot; Caja Operativa CAVI</td>
+      </tr>
+      <tr>
+        <td class="etiqueta">Estado Legal:</td>
+        <td class="valor">
+          {% if pago.estado == 'ANULADO' %}
+          <span style="color: #b91c1c;">ANULADO / SIN EFECTO LIBERATORIO</span>
+          {% else %}
+          <span style="color: #047857;">VÁLIDO / PAGO RECAUDADO</span>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+
+    <!-- Cuadro Destacado de Monto -->
+    <div class="caja-monto {% if pago.estado == 'ANULADO' %}anulada{% endif %}">
+      <div class="caja-monto-header">
+        <span class="caja-monto-label">
+          {% if pago.estado == 'ANULADO' %}Total Registrado (Revertido Contablemente){% else %}Total Cobrado y Percibido{% endif %}
+        </span>
+        <span class="caja-monto-valor">{{ monto_fmt }}</span>
+      </div>
+      <div class="caja-monto-letras">
+        Son: {{ monto_letras }}
+        {% if pago.estado == 'ANULADO' %} [OPERACIÓN ANULADA &middot; FONDOS DEVUELTOS]{% endif %}
+      </div>
+    </div>
+
+    <!-- Desglose de Imputación Legal (Art. 3180 Código Civil) -->
+    <table class="tabla-desglose">
+      <thead>
+        <tr>
+          <th>Concepto de Imputación (Prelación Art. 3180 C.C.)</th>
+          <th style="text-align: right;">Importe Aplicado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Mora y Recargos por Incumplimiento</td>
+          <td class="num">C$ {{ pago.aplicacion_mora|floatformat:2 }}</td>
+        </tr>
+        <tr>
+          <td>Interés Corriente Devengado del Período (Ley N.° 176)</td>
+          <td class="num">C$ {{ pago.aplicacion_interes|floatformat:2 }}</td>
+        </tr>
+        <tr>
+          <td>Amortización Directa a Capital Principal</td>
+          <td class="num" style="color: #047857;">C$ {{ pago.aplicacion_capital|floatformat:2 }}</td>
+        </tr>
+        <tr>
+          <td>Saldo Deudor Insoluto Remanente tras el Pago</td>
+          <td class="num">C$ {{ pago.saldo_insoluto_tras_pago|floatformat:2 }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Liquidación Ley 977 (solo visible si existe desglose administrativo) -->
+    {% if es_admin and pago.interes_administracion %}
+    <div class="seccion-ley">
+      <div class="seccion-ley-titulo">Distribución y Liquidación de Rendimientos (Ley N.° 977)</div>
+      <table style="width: 100%;">
+        <tr>
+          <td style="width: 50%;">Interés Administración CAVI (50%): <strong>C$ {{ pago.interes_administracion|floatformat:2 }}</strong></td>
+          <td style="width: 50%; text-align: right;">Interés Fondos Inversores (50%): <strong>C$ {{ pago.interes_fondos|floatformat:2 }}</strong></td>
+        </tr>
+      </table>
+      {% if fondos_detalle %}
+      <div style="margin-top: 8px; border-top: 1px dotted #cbd5e1; padding-top: 6px;">
+        <span style="color: #475569; font-weight: 700; font-size: 8pt; text-transform: uppercase;">Acreditación y Reintegro a Bolsas Inversoras:</span>
+        <div style="margin-top: 4px;">
+          {% for f in fondos_detalle %}
+          <div style="padding: 2px 0; font-size: 8pt; color: #334155;">
+            &bull; <strong>{{ f.fondo.nombre }}</strong> (Titular: {{ f.fondo.familiar }} &middot; Participación: <strong>{{ f.porcentaje_pi }}</strong>): 
+            C$ {{ f.capital_reintegrado|floatformat:2 }} capital reintegrado &middot; C$ {{ f.ganancia|floatformat:2 }} ganancia de interés
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Bloque de Firmas -->
+    <table class="bloque-firmas">
+      <tr>
+        <td>
+          <div style="height: 40px;"></div>
+          <div class="linea-firma">{{ cliente.nombres }} {{ cliente.apellidos }}</div>
+          <div class="rol-firma">Prestatario / Pagador Conforme</div>
+        </td>
+        <td class="separador"></td>
+        <td>
+          <div style="height: 40px;"></div>
+          <div class="linea-firma">{{ usuario_nombre }}</div>
+          <div class="rol-firma">Cajero Receptor &middot; CAVI</div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Pie de Folio -->
+    <div class="pie-documento">
+      Documento legal emitido por CAVI &middot; Código de Autenticidad: {{ codigo_seguridad }} &middot; Emitido: {{ fecha_generacion }}
+      <br>
+      {% if pago.estado == 'ANULADO' %}
+      AVISO DE AUDITORÍA: Comprobante carente de fuerza ejecutiva o liberatoria tras su anulación formal en el sistema.
+      {% else %}
+      El presente recibo constituye constancia de extinción de las obligaciones aquí desglosadas (Art. 3180 C.C.).
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('load', function() {
+      // Activa automáticamente el diálogo de impresión con el formato perfecto
+      setTimeout(function() {
+        window.print();
+      }, 350);
+    });
+  </script>
+</body>
+
+</html>

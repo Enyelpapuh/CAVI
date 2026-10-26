@@ -30,18 +30,47 @@ class TestCrearFondo:
         }, format='json')
         assert res.status_code == 400
 
-    def test_crear_fondo_duplicado_nombre_ok(self, auth_client):
-        auth_client.post(FONDO_URL, {
-            'nombre': 'Fondo A',
-            'familiar': 'Fam A',
-            'capital_inicial': '100.00',
+    def test_crear_fondo_persona_natural(self, auth_client):
+        res = auth_client.post(FONDO_URL, {
+            'nombre': 'Bolsa Morales Familiar',
+            'tipo_persona': 'NATURAL',
+            'identificacion': '001-150490-0001A',
+            'nombres_titular': 'Roberto',
+            'apellidos_titular': 'Morales Gómez',
+            'telefono_contacto': '8888-1234',
+            'direccion_legal': 'Reparto San Juan, Managua',
+            'parentesco_relacion': 'Hermano del Administrador',
+            'capital_inicial': '30000.00',
         }, format='json')
-        res2 = auth_client.post(FONDO_URL, {
-            'nombre': 'Fondo A',
-            'familiar': 'Fam B',
-            'capital_inicial': '200.00',
+
+        assert res.status_code == 201
+        assert res.data['tipo_persona'] == 'NATURAL'
+        assert res.data['identificacion'] == '001-150490-0001A'
+        assert res.data['familiar'] == 'Roberto Morales Gómez'
+        fondo = Fondo.objects.get(pk=res.data['id'])
+        assert fondo.nombres_titular == 'Roberto'
+        assert fondo.parentesco_relacion == 'Hermano del Administrador'
+
+    def test_crear_fondo_persona_juridica(self, auth_client):
+        res = auth_client.post(FONDO_URL, {
+            'nombre': 'Inversiones Mercantiles S.A.',
+            'tipo_persona': 'JURIDICA',
+            'razon_social': 'Inversiones del Pacífico S.A.',
+            'ruc': 'J0310000123456',
+            'representante_legal': 'Dra. María Auxiliadora Silva',
+            'cedula_representante': '001-201080-0005M',
+            'telefono_contacto': '2255-9900',
+            'direccion_legal': 'Km 4.5 Carretera a Masaya',
+            'capital_inicial': '100000.00',
         }, format='json')
-        assert res2.status_code == 201
+
+        assert res.status_code == 201
+        assert res.data['tipo_persona'] == 'JURIDICA'
+        assert res.data['ruc'] == 'J0310000123456'
+        assert res.data['familiar'] == 'Inversiones del Pacífico S.A.'
+        fondo = Fondo.objects.get(pk=res.data['id'])
+        assert fondo.representante_legal == 'Dra. María Auxiliadora Silva'
+
 
 
 class TestInyeccion:

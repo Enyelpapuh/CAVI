@@ -3,7 +3,7 @@ import { useCallback, useContext, useMemo, useRef, useState } from 'preact/hooks
 import type { ComponentChildren } from 'preact';
 import { Icon } from './Icon';
 
-type TipoToast = 'success' | 'error' | 'info';
+type TipoToast = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastItem {
   id: number;
@@ -15,6 +15,7 @@ interface ToastApi {
   success: (mensaje: string) => void;
   error: (mensaje: string) => void;
   info: (mensaje: string) => void;
+  warning: (mensaje: string) => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -23,6 +24,7 @@ const ESTILOS: Record<TipoToast, { icono: string; clases: string }> = {
   success: { icono: 'check_circle', clases: 'text-green-600 bg-green-100' },
   error: { icono: 'warning', clases: 'text-red-600 bg-red-100' },
   info: { icono: 'notifications', clases: 'text-slate-600 bg-slate-200' },
+  warning: { icono: 'warning', clases: 'text-amber-600 bg-amber-100' },
 };
 
 const DURACION_MS = 4000;
@@ -44,6 +46,7 @@ export function ToastProvider({ children }: { children: ComponentChildren }) {
       success: (mensaje) => push('success', mensaje),
       error: (mensaje) => push('error', mensaje),
       info: (mensaje) => push('info', mensaje),
+      warning: (mensaje) => push('warning', mensaje),
     }),
     [push]
   );
@@ -85,10 +88,14 @@ export function ToastProvider({ children }: { children: ComponentChildren }) {
   );
 }
 
+const noopToastApi: ToastApi = {
+  success: () => {},
+  error: () => {},
+  warning: () => {},
+  info: () => {},
+};
+
 export function useToast(): ToastApi {
   const api = useContext(ToastContext);
-  if (!api) {
-    throw new Error('useToast debe usarse dentro de <ToastProvider>');
-  }
-  return api;
+  return api ?? noopToastApi;
 }

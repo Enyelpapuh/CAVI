@@ -8,6 +8,16 @@ vi.mock('../../services/api', () => ({
     update: vi.fn(),
     delete: vi.fn(),
   },
+  catalogoService: {
+    actividades: vi.fn().mockResolvedValue([]),
+    departamentos: vi.fn().mockResolvedValue([]),
+    municipios: vi.fn().mockResolvedValue([]),
+  },
+  prestamoService: {
+    list: vi.fn().mockResolvedValue({ results: [] }),
+    pagarPagare: vi.fn(),
+    abrirPagareHtml: vi.fn(),
+  },
 }));
 
 vi.mock('../../components/Layout', () => ({
@@ -144,19 +154,25 @@ describe('ClientesPage', () => {
     );
   });
 
-  it('deshabilita el cliente solo tras confirmar', async () => {
+  it('deshabilita el cliente solo tras confirmar en el modal', async () => {
     (clienteService.delete as any).mockResolvedValue({});
-    const confirmSpy = vi.fn(() => false);
-    vi.stubGlobal('confirm', confirmSpy);
     renderPage();
     await waitFor(() => expect(screen.getByText('Juan Perez Ramirez')).toBeInTheDocument());
 
+    // Pulsar botón deshabilitar abre el ConfirmModal
     fireEvent.click(screen.getByRole('button', { name: /Deshabilitar/i }));
-    expect(confirmSpy).toHaveBeenCalled();
+    expect(screen.getByText('Desactivar Prestatario')).toBeInTheDocument();
     expect(clienteService.delete).not.toHaveBeenCalled();
 
-    vi.stubGlobal('confirm', () => true);
+    // Pulsar Cancelar descarta sin eliminar
+    fireEvent.click(screen.getByRole('button', { name: /Cancelar/i }));
+    await waitFor(() => expect(screen.queryByText('Desactivar Prestatario')).not.toBeInTheDocument());
+    expect(clienteService.delete).not.toHaveBeenCalled();
+
+    // Abrir y confirmar
     fireEvent.click(screen.getByRole('button', { name: /Deshabilitar/i }));
+    expect(screen.getByText('Desactivar Prestatario')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
     await waitFor(() => expect(clienteService.delete).toHaveBeenCalledWith(1));
   });
 
@@ -174,7 +190,7 @@ describe('ClientesPage', () => {
     expect(screen.getByText('Contacto y Domicilio')).toBeInTheDocument();
     expect(screen.getByText('Perfil y Actividad Económica')).toBeInTheDocument();
     expect(screen.getByText('Registro en Sistema')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Nuevo Préstamo/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Nuevo Préstamo/i })[0]).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Editar Datos/i })).toBeInTheDocument();
   });
 

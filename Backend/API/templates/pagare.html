@@ -1,156 +1,583 @@
 {% comment %}
-Pagaré legal CAVI (TK23).
-
-Requisitos: Ley 176 (prohibición del anatocismo: el interés se calcula sobre el
-saldo insoluto), Código de Comercio de Nicaragua (arts. 272 y ss.: pagaré como
-título valor) y Art. 3180 del Código Civil (prelación mora → interés → capital).
-
-El CSS se declara en la misma plantilla para que el documento sea autocontenido
-y ambos motores (WeasyPrint y xhtml2pdf) lo rendericen sin hojas externas.
-{% endcomment %}<!DOCTYPE html>
+Pagaré Notarial y Título Valor Ejecutivo CAVI.
+Optimizado para renderizado con xhtml2pdf / WeasyPrint.
+Diseño limpio, profesional y con espacios claros para firma.
+{% endcomment %}
+<!DOCTYPE html>
 <html lang="es">
+
 <head>
-<meta charset="utf-8">
-<title>Pagaré {{ prestamo.id }}</title>
-<style>
-@page { size: letter; margin: 1.6cm 1.5cm 2.2cm 1.5cm; }
-body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 10pt; color: #101828; line-height: 1.45; }
-h1 { font-size: 15pt; text-align: center; margin: 0 0 2mm 0; letter-spacing: 2px; }
-.sub { text-align: center; font-size: 8.5pt; color: #475467; margin: 0 0 6mm 0; }
-table { width: 100%; border-collapse: collapse; }
-.datos { border: none; margin-bottom: 5mm; }
-.datos td { border: none; border-bottom: 1px solid #d0d5dd; padding: 2.2mm 1mm; vertical-align: bottom; }
-.datos .etiqueta { width: 30mm; font-size: 7.5pt; color: #475467; text-transform: uppercase; border-bottom: none; }
-.datos .valor { font-weight: bold; }
-.clausula { text-align: justify; margin: 4mm 0; }
-.ley { font-size: 7.5pt; color: #475467; text-align: justify; border-top: 1px solid #d0d5dd; padding-top: 2.5mm; margin-top: 4mm; }
-.tabla-cuotas { margin-top: 4mm; font-size: 8pt; }
-.tabla-cuotas th { background: #f2f4f7; border: 1px solid #d0d5dd; padding: 1.6mm; text-align: left; text-transform: uppercase; font-size: 7pt; }
-.tabla-cuotas td { border: 1px solid #d0d5dd; padding: 1.4mm; }
-.num { text-align: right; }
-.firmas { margin-top: 14mm; width: 100%; border: none; }
-.firmas td { border: none; width: 50%; text-align: center; vertical-align: bottom; }
-.linea-firma { border-bottom: 1px solid #101828; height: 14mm; }
-.pie { margin-top: 8mm; font-size: 7pt; color: #667085; text-align: center; border-top: 1px solid #d0d5dd; padding-top: 2mm; }
-</style>
+  <meta charset="utf-8">
+  <title>Pagaré {{ numero_documento }}</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 20mm 20mm 20mm 20mm;
+      /* Márgenes más amplios para que respire el documento */
+    }
+
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 9pt;
+      color: #1e293b;
+      line-height: 1.4;
+      margin: 0;
+      padding: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    /* ================= PÁGINA 1: CABECERA ================= */
+    .cabecera-principal {
+      width: 100%;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+
+    .marca-box h1 {
+      margin: 0;
+      font-size: 22pt;
+      font-weight: 900;
+      color: #0f172a;
+      letter-spacing: 1px;
+    }
+
+    .marca-box p {
+      margin: 2px 0 0 0;
+      font-size: 8pt;
+      color: #475569;
+      font-weight: bold;
+    }
+
+    .doc-info-box {
+      text-align: right;
+    }
+
+    .doc-info-box h2 {
+      margin: 0;
+      font-size: 12pt;
+      color: #0f172a;
+      letter-spacing: 0.5px;
+    }
+
+    .doc-numero {
+      font-size: 11pt;
+      font-weight: bold;
+      color: #dc2626;
+      /* Rojo oscuro para resaltar el número de pagaré */
+      margin: 3px 0;
+    }
+
+    .doc-control {
+      font-size: 7.5pt;
+      color: #64748b;
+    }
+
+    /* ================= TÍTULO CENTRAL ================= */
+    .titulo-central {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .titulo-central h3 {
+      font-size: 14pt;
+      font-weight: 900;
+      margin: 0;
+      text-decoration: underline;
+    }
+
+    .titulo-central p {
+      font-size: 8pt;
+      color: #475569;
+      margin: 5px 0 0 0;
+    }
+
+    /* ================= TABLA DE CONDICIONES ================= */
+    .tabla-condiciones {
+      border: 1px solid #cbd5e1;
+      margin-bottom: 20px;
+    }
+
+    .tabla-condiciones td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 8px;
+    }
+
+    .tabla-condiciones .lbl {
+      background-color: #f1f5f9;
+      font-size: 7.5pt;
+      color: #475569;
+      font-weight: bold;
+      text-transform: uppercase;
+      width: 20%;
+    }
+
+    .tabla-condiciones .val {
+      font-size: 9pt;
+      font-weight: bold;
+      color: #0f172a;
+      width: 30%;
+    }
+
+    /* ================= TEXTOS LEGALES ================= */
+    .texto-declaracion {
+      text-align: justify;
+      font-size: 9.5pt;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      padding: 10px;
+      background-color: #f8fafc;
+      border-left: 3px solid #0f172a;
+    }
+
+    .clausulas-header {
+      font-size: 10pt;
+      font-weight: bold;
+      color: #0f172a;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 5px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+
+    .clausula-parrafo {
+      text-align: justify;
+      font-size: 8.5pt;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .clausula-parrafo strong {
+      color: #0f172a;
+    }
+
+    .marco-legal {
+      font-size: 7.5pt;
+      color: #475569;
+      text-align: justify;
+      border-top: 1px solid #cbd5e1;
+      padding-top: 10px;
+      margin-top: 20px;
+      line-height: 1.3;
+    }
+
+    /* ================= FIRMAS MEJORADAS ================= */
+    .bloque-firmas {
+      margin-top: 40px;
+      width: 100%;
+      page-break-inside: avoid;
+    }
+
+    .bloque-firmas td {
+      width: 45%;
+      text-align: center;
+      vertical-align: bottom;
+    }
+
+    .separador-firmas {
+      width: 10%;
+    }
+
+    .espacio-firma {
+      height: 40px;
+      /* Espacio real para que el cliente firme */
+    }
+
+    .raya-firma {
+      border-top: 1px solid #0f172a;
+      margin: 0 auto 5px auto;
+      width: 80%;
+    }
+
+    .nombre-firmante {
+      font-size: 9pt;
+      font-weight: bold;
+      color: #0f172a;
+    }
+
+    .rol-firmante {
+      font-size: 8pt;
+      color: #475569;
+      font-weight: bold;
+      margin-top: 3px;
+    }
+
+    .cedula-firmante {
+      font-size: 7.5pt;
+      color: #64748b;
+    }
+
+    /* ================= PÁGINA 2: ANEXO ================= */
+    .pagina-anexo {
+      page-break-before: always;
+    }
+
+    .tabla-cuotas {
+      width: 100%;
+      border: 1px solid #94a3b8;
+      margin-top: 15px;
+      margin-bottom: 20px;
+    }
+
+    .tabla-cuotas th {
+      background-color: #0f172a;
+      color: #ffffff;
+      padding: 8px 5px;
+      font-size: 8pt;
+      text-align: center;
+      border: 1px solid #94a3b8;
+    }
+
+    .tabla-cuotas td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 5px;
+      font-size: 8.5pt;
+      text-align: center;
+    }
+
+    .fila-par {
+      background-color: #f8fafc;
+    }
+
+    .num {
+      text-align: right !important;
+      padding-right: 10px !important;
+    }
+
+    .pie-folio {
+      margin-top: 20px;
+      font-size: 7.5pt;
+      color: #64748b;
+      text-align: center;
+      border-top: 1px solid #cbd5e1;
+      padding-top: 10px;
+    }
+
+    /* ================= VISTA PREVIA EN NAVEGADOR ================= */
+    .barra-acciones-navegador {
+      display: none;
+    }
+
+    @media screen {
+      body {
+        background-color: #f1f5f9;
+        margin: 0;
+        padding: 24px 16px 48px 16px;
+      }
+
+      .barra-acciones-navegador {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        max-width: 820px;
+        margin: 0 auto 20px auto;
+        background: #0f172a;
+        color: #ffffff;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+      }
+
+      .barra-info {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .barra-titulo {
+        font-size: 11pt;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+      }
+
+      .barra-subtitulo {
+        font-size: 8pt;
+        color: #94a3b8;
+      }
+
+      .barra-botones {
+        display: flex;
+        gap: 10px;
+      }
+
+      .btn-accion {
+        font-family: inherit;
+        font-size: 9pt;
+        font-weight: 600;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease-in-out;
+        border: none;
+      }
+
+      .btn-imprimir {
+        background-color: #2563eb;
+        color: #ffffff;
+      }
+
+      .btn-imprimir:hover {
+        background-color: #1d4ed8;
+      }
+
+      .btn-cerrar {
+        background-color: #334155;
+        color: #f8fafc;
+      }
+
+      .btn-cerrar:hover {
+        background-color: #475569;
+      }
+
+      .pagina-documento {
+        max-width: 820px;
+        margin: 0 auto 28px auto;
+        background: #ffffff;
+        padding: 44px 50px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+        box-sizing: border-box;
+      }
+    }
+
+    @media print {
+      body {
+        background-color: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      .barra-acciones-navegador {
+        display: none !important;
+      }
+
+      .pagina-documento {
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<h1>PAGARÉ</h1>
-<p class="sub">Título valor.emitido por CAVI &middot; Registro N.º {{ numero_documento }}</p>
+  <!-- Barra de control exclusiva para vista en navegador (no se imprime ni se genera en PDF) -->
+  <div class="barra-acciones-navegador">
+    <div class="barra-info">
+      <span class="barra-titulo">Documento Oficial CAVI</span>
+      <span class="barra-subtitulo">Pagaré N.° {{ numero_documento }} &middot; Ref: {{ codigo_seguridad }}</span>
+    </div>
+    <div class="barra-botones">
+      <button type="button" class="btn-accion btn-imprimir" onclick="window.print()">
+        Imprimir Pagaré / Guardar PDF
+      </button>
+      <button type="button" class="btn-accion btn-cerrar" onclick="window.close()">
+        Cerrar
+      </button>
+    </div>
+  </div>
 
-<table class="datos">
-  <tr>
-    <td class="etiqueta">Lugar y fecha</td>
-    <td class="valor">{{ lugar }}, {{ fecha_emision }}</td>
-    <td class="etiqueta">Monto del pagaré</td>
-    <td class="valor">{{ monto_letras }} ({{ monto_total_texto }})</td>
-  </tr>
-  <tr>
-    <td class="etiqueta">Deudor</td>
-    <td class="valor">{{ cliente.nombres }} {{ cliente.apellidos }}</td>
-    <td class="etiqueta">Cédula</td>
-    <td class="valor">{{ cliente.cedula }}</td>
-  </tr>
-  <tr>
-    <td class="etiqueta">Domicilio</td>
-    <td class="valor">{{ cliente.direccion }}</td>
-    <td class="etiqueta">Teléfono</td>
-    <td class="valor">{{ cliente.telefono }}</td>
-  </tr>
-  <tr>
-    <td class="etiqueta">Plazo</td>
-    <td class="valor">{{ plazo_texto }}</td>
-    <td class="etiqueta">Periodicidad</td>
-    <td class="valor">{{ periodicidad_texto }}</td>
-  </tr>
-  <tr>
-    <td class="etiqueta">Tasa de interés</td>
-    <td class="valor">{{ tasa_interes_texto }} mensual</td>
-    <td class="etiqueta">Cuota</td>
-    <td class="valor">{{ cuota_texto }}</td>
-  </tr>
-  <tr>
-    <td class="etiqueta">Fecha desembolso</td>
-    <td class="valor">{{ prestamo.fecha_desembolso }}</td>
-    <td class="etiqueta">Primer corte</td>
-    <td class="valor">{{ prestamo.fecha_primer_corte }}</td>
-  </tr>
-</table>
+  <!-- ================= PÁGINA 1: PAGARÉ ================= -->
+  <div class="pagina-documento">
+    <table class="cabecera-principal">
+      <tr>
+        <td class="marca-box" style="width: 50%; vertical-align: middle;">
+          <h1>CAVI</h1>
+          <p>Control y Administración de Valores e Inversiones<br>Servicios Crediticios &middot; Managua, Nicaragua</p>
+        </td>
+        <td class="doc-info-box" style="width: 50%; vertical-align: middle;">
+          <h2>TÍTULO VALOR EJECUTIVO</h2>
+          <div class="doc-numero">N.° {{ numero_documento }}</div>
+          <div class="doc-control">Control: {{ codigo_seguridad }}</div>
+        </td>
+      </tr>
+    </table>
 
-<p class="clausula">
-  Por este pagaré me obligo a pagar a la ordem de <strong>CAVI</strong>, en la ciudad de Managua,
-  República de Nicaragua, la suma de <strong>{{ monto_letras }}</strong>
-  ({{ monto_total_texto }}), correspondiente al capital entregado en efectivo por esa institución
-  en calidad de préstamo, con {{ plazo_texto }} de plazo y amortización en {{ periodicidad_texto|capfirst }} cuotas
-  de {{ cuota_texto }} cada una, que incluyen intereses sobre el saldo insoluto.
-</p>
+    <div class="titulo-central">
+      <h3>PAGARÉ A LA ORDEN</h3>
+      <p>Suscrito en {{ lugar }} &middot; Monto: <strong>{{ monto_total_texto }}</strong></p>
+    </div>
 
-<p class="clausula">
-  El deudor se obliga además a pagar un recargo por mora de <strong>{{ tasa_mora_texto }} mensual</strong>
-  sobre el capital insoluto por cada día que exceda los {{ dias_gracia }} días de gracia,
-  más los intereses corridos no pagados. Los pagos se imputarán en el siguiente orden:
-  <strong>mora, interés corriente y, por último, capital</strong>.
-</p>
+    <table class="tabla-condiciones">
+      <tr>
+        <td class="lbl">Deudor Titular</td>
+        <td class="val" colspan="3">{{ cliente.nombres }} {{ cliente.apellidos }}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Cédula Identidad</td>
+        <td class="val">{{ cliente.cedula }}</td>
+        <td class="lbl">Domicilio Legal</td>
+        <td class="val">{{ cliente.direccion|default:"Managua, Nicaragua" }}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Emisión</td>
+        <td class="val">{{ fecha_emision }}</td>
+        <td class="lbl">Vencimiento</td>
+        <td class="val">{{ fecha_vencimiento }}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Monto Principal</td>
+        <td class="val">{{ monto_total_texto }}</td>
+        <td class="lbl">Plazo</td>
+        <td class="val">{{ plazo_texto }} ({{ periodicidad_texto }})</td>
+      </tr>
+      <tr>
+        <td class="lbl">Tasa Ordinaria</td>
+        <td class="val">{{ tasa_interes_texto }} mensual</td>
+        <td class="lbl">Cuota Periódica</td>
+        <td class="val">{{ cuota_texto }}</td>
+      </tr>
+    </table>
 
-<p class="clausula">
-  El pago de cualquiera de las cuotas obliga al deudor a cancelar el total de la deuda
-  (&ldquo;cláusula de CROSS&rdquo;). El deudor autoriza que en caso de mora se informe su nombre,
-  cédula, domicilio y saldo adeudado a centrales de riesgo para cobro judicial y Banco Central
-  de Nicaragua.
-</p>
+    <div class="texto-declaracion">
+      Por el presente documento de pagaré a la orden, yo <strong>{{ cliente.nombres }} {{ cliente.apellidos }}</strong>,
+      mayor de edad, civilmente capaz e identificado con cédula de identidad número <strong>{{ cliente.cedula }}</strong>,
+      <strong>RECONOZCO DEBER Y ME COMPROMETO A PAGAR INCONDICIONALMENTE</strong> a la orden de <strong>CAVI</strong>
+      (representada legalmente por <strong>{{ usados_por }}</strong>), la suma líquida y exigible de <strong>{{ monto_letras }}</strong>
+      ({{ monto_total_texto }}), correspondiente al capital dinerario efectivamente recibido en calidad de préstamo a mi
+      entera satisfacción.
+    </div>
 
-<p class="ley">
-  <strong>Fundamento legal.</strong> Ley N.º 176, Ley de Anatocismo: los intereses se calculan
-  únicamente sobre el saldo principal insoluto, prohibiendo la capitalización de intereses
-  vencidos. Código de Comercio de Nicaragua: el pagaré es título valor exigible por su propia
-  fuerza legal. Art. 3180 del Código Civil: en caso de mora, los pagos se aplican primero a las
-  costas, luego al interés y por último al capital.
-</p>
+    <div class="clausulas-header">Condiciones del Préstamo</div>
 
-<table class="tabla-cuotas">
-  <thead>
-    <tr>
-      <th>#</th>
-      <th>Vencimiento</th>
-      <th class="num">Cuota</th>
-      <th class="num">Interés</th>
-      <th class="num">Capital</th>
-      <th class="num">Saldo insoluto</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for fila in proyeccion.periodos %}
-    <tr>
-      <td class="num">{{ fila.periodo }}</td>
-      <td>{{ fila.fecha_vencimiento|date:"d/m/Y" }}</td>
-      <td class="num">{{ fila.cuota }}</td>
-      <td class="num">{{ fila.interes }}</td>
-      <td class="num">{{ fila.capital }}</td>
-      <td class="num">{{ fila.saldo_insoluto }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+    <div class="clausula-parrafo">
+      <strong>1. Duración y Plazo:</strong> Este crédito tiene un plazo de <strong>{{ plazo_texto }}</strong> a partir
+      de la fecha de suscripción ({{ fecha_emision }}), venciendo el <strong>{{ fecha_vencimiento }}</strong>.
+    </div>
+    <div class="clausula-parrafo">
+      <strong>2. Intereses:</strong> El préstamo devenga un interés del <strong>{{ tasa_interes_texto }}
+        mensual</strong> sobre el saldo deudor insoluto. Se cancelarán cuotas de <strong>{{ cuota_texto }}</strong> de
+      forma {{ periodicidad_texto }}.
+    </div>
+    <div class="clausula-parrafo">
+      <strong>3. Recargo por Mora:</strong> Transcurridos <strong>{{ dias_gracia }} días de gracia</strong> tras la
+      fecha de corte, se aplicará un recargo por mora del <strong>{{ tasa_mora_texto }} mensual</strong>. Los pagos se
+      imputarán en orden de prelación: mora, interés corriente y capital adeudado.
+    </div>
+    <div class="clausula-parrafo">
+      <strong>4. Vencimiento Anticipado:</strong> El incumplimiento de cualquier cuota faculta al acreedor a declarar de
+      plazo vencido la totalidad del saldo y exigir judicialmente el pago, constituyendo el presente documento título
+      ejecutivo suficiente.
+    </div>
 
-<table class="firmas">
-  <tr>
-    <td>
-      <div class="linea-firma"></div>
-      <p><strong>{{ cliente.nombres }} {{ cliente.apellidos }}</strong><br>{{ cliente.cedula }}<br>Deudor</p>
-    </td>
-    <td></td>
-    <td>
-      <div class="linea-firma"></div>
-      <p><strong>CAVI</strong><br>{{ usados_por }}<br>Aceptación</p>
-    </td>
-  </tr>
-</table>
+    <div class="marco-legal">
+      <strong>Fundamento legal:</strong> Título valor exigible conforme al Código de Comercio de la República de
+      Nicaragua. Ley N.º 176 (Prohibición del Anatocismo) y prelación de pagos conforme al Código Civil de Nicaragua. El
+      Anexo N.° 1 forma parte integral de este pagaré.
+    </div>
 
-<p class="pie">
-  Documento generado el {{ fecha_generacion }} &middot; PDF {{ variante_pdf }}
-  &middot; Cuota fija sobre saldo insoluto, sin anatocismo (Ley N.º 176).
-</p>
+    <!-- SECCIÓN DE FIRMAS MEJORADA -->
+    <table class="bloque-firmas">
+      <tr>
+        <td>
+          <div class="espacio-firma"></div>
+          <div class="raya-firma"></div>
+          <div class="nombre-firmante">{{ cliente.nombres }} {{ cliente.apellidos }}</div>
+          <div class="rol-firmante">Firma y Huella del Deudor</div>
+          <div class="cedula-firmante">Cédula: {{ cliente.cedula }}</div>
+        </td>
+        <td class="separador-firmas"></td>
+        <td>
+          <div class="espacio-firma"></div>
+          <div class="raya-firma"></div>
+          <div class="nombre-firmante">{{ usados_por }}</div>
+          <div class="rol-firmante">Firma Autorizada por CAVI</div>
+          <div class="cedula-firmante">Sello Institucional</div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="pie-folio">
+      Página 1 de 2 &middot; Pagaré N.° {{ numero_documento }} &middot; Emitido: {{ fecha_generacion }}
+    </div>
+  </div>
+
+  <!-- ================= PÁGINA 2: ANEXO ================= -->
+  <pdf:nextpage />
+  <div class="pagina-documento pagina-anexo">
+    <table class="cabecera-principal">
+      <tr>
+        <td style="width: 70%; vertical-align: middle;">
+          <h1 style="font-size: 14pt; margin: 0; color: #0f172a;">ANEXO N.° 1: CALENDARIO DE AMORTIZACIÓN</h1>
+          <p style="margin: 2px 0 0 0; font-size: 8pt; color: #475569;">Plan Oficial de Pagos Vinculado al Pagaré N.° {{ numero_documento }}</p>
+        </td>
+        <td style="width: 30%; text-align: right; vertical-align: middle;">
+          <div class="doc-numero" style="font-size: 9pt;">Emisión: {{ fecha_emision }}</div>
+          <div class="doc-control">Vencimiento: {{ fecha_vencimiento }}</div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="tabla-condiciones">
+      <tr>
+        <td class="lbl">Titular</td>
+        <td class="val">{{ cliente.nombres }} {{ cliente.apellidos }}</td>
+        <td class="lbl">Monto</td>
+        <td class="val">{{ monto_total_texto }}</td>
+      </tr>
+    </table>
+
+    <table class="tabla-cuotas">
+      <thead>
+        <tr>
+          <th style="width: 5%;">#</th>
+          <th style="width: 19%;">Fecha Corte</th>
+          <th class="num" style="width: 19%;">Cuota</th>
+          <th class="num" style="width: 19%;">Interés</th>
+          <th class="num" style="width: 19%;">Capital</th>
+          <th class="num" style="width: 19%;">Saldo insoluto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in proyeccion.periodos %}
+        <tr>
+          <td>{{ fila.periodo }}</td>
+          <td>{{ fila.fecha_vencimiento|date:"d/m/Y" }}</td>
+          <td class="num">{{ fila.cuota }}</td>
+          <td class="num">{{ fila.interes }}</td>
+          <td class="num">{{ fila.capital }}</td>
+          <td class="num">{{ fila.saldo_insoluto }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="marco-legal">
+      <strong>Nota de Amortización:</strong> Las cuotas se calculan rigurosamente sobre el saldo insoluto del período
+      (Ley N.º 176). Todo abono extraordinario reducirá directamente el capital principal pendiente.
+    </div>
+
+    <table class="bloque-firmas" style="margin-top: 30px;">
+      <tr>
+        <td>
+          <div class="espacio-firma"></div>
+          <div class="raya-firma"></div>
+          <div class="nombre-firmante">{{ cliente.nombres }} {{ cliente.apellidos }}</div>
+          <div class="rol-firmante">Conforme (Deudor)</div>
+        </td>
+        <td class="separador-firmas"></td>
+        <td>
+          <div class="espacio-firma"></div>
+          <div class="raya-firma"></div>
+          <div class="nombre-firmante">{{ usados_por }}</div>
+          <div class="rol-firmante">Conforme (CAVI)</div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="pie-folio">
+      Página 2 de 2 &middot; Anexo N.° 1 al Pagaré N.° {{ numero_documento }}
+    </div>
+  </div>
 
 </body>
+
 </html>

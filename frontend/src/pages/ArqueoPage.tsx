@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from 'preact/hooks';
+import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
 import { Layout } from '../components/Layout';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, DataTable, Icon, Input, Select, Spinner, EmptyState, useToast, type Columna } from '../components/ui';
-import { pagoService, usuarioService } from '../services/api';
+import { Button, Card, DataTable, Icon, Input, Select, Spinner, Modal, StatusBadge, useToast, type Columna } from '../components/ui';
+import { pagoService, usuarioService, cajaService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { fmtMonto, fmtCantidad, fmtFecha } from '../lib/format';
-import type { Pago, Usuario } from '../types';
+import type { Pago, Usuario, SesionCaja } from '../types';
 import { PagoRecibo } from '../components/PagoRecibo';
 
 const HOY = new Date().toISOString().slice(0, 10);
@@ -28,8 +28,77 @@ export function ArqueoPage() {
   const [pagos, setPagos] = useState<Pago[]>([]);
   const [loading, setLoading] = useState(true);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  
   const [pagoSeleccionado, setPagoSeleccionado] = useState<number | null>(null);
+
+  // Control de Sesión de Caja (Turnos de Cobro)
+  const [sesionActiva, setSesionActiva] = useState<SesionCaja | null>(null);
+  const [modalApertura, setModalApertura] = useState(false);
+  const [modalCierre, setModalCierre] = useState(false);
+  const [saldoInicial, setSaldoInicial] = useState('0.00');
+  const [efectivoDeclarado, setEfectivoDeclarado] = useState('');
+  const [obsCierre, setObsCierre] = useState('');
+  const [cajaSubmitting, setCajaSubmitting] = useState(false);
+
+  const cerrarApertura = useCallback(() => setModalApertura(false), []);
+  const cerrarCierre = useCallback(() => setModalCierre(false), []);
+
+  const cargarSesion = async () => {
+    try {
+      const resp = await cajaService.activa();
+      setSesionActiva(resp.activa ? resp.sesion : null);
+    } catch {
+      // Ignorar si falla
+    }
+  };
+
+  useEffect(() => {
+    cargarSesion();
+  }, []);
+
+  const handleApertura = async (e: Event) => {
+    e.preventDefault();
+    setCajaSubmitting(true);
+    try {
+      const nueva = await cajaService.apertura({
+        saldo_inicial_efectivo: saldoInicial,
+        observaciones: 'Apertura de turno de ruta',
+      });
+      setSesionActiva(nueva);
+      setModalApertura(false);
+      toast.success('Turno de caja aperturado con éxito');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Error al aperturar caja');
+    } finally {
+      setCajaSubmitting(false);
+    }
+  };
+
+  const handleCierre = async (e: Event) => {
+    e.preventDefault();
+    if (!sesionActiva) return;
+    setCajaSubmitting(true);
+    try {
+      const cerrada = await cajaService.cierre(sesionActiva.id, {
+        efectivo_declarado: efectivoDeclarado,
+        observaciones: obsCierre,
+      });
+      setSesionActiva(null);
+      setModalCierre(false);
+      const diff = Number(cerrada.diferencia);
+      if (diff === 0) {
+        toast.success('Caja cerrada y conciliada al centavo (C$0.00 de diferencia)');
+      } else if (diff > 0) {
+        toast.success(`Caja cerrada con sobrante de ${fmtMonto(diff)}`);
+      } else {
+        toast.warning(`Caja cerrada con faltante de ${fmtMonto(Math.abs(diff))}`);
+      }
+      cargarPagos();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Error al cerrar caja');
+    } finally {
+      setCajaSubmitting(false);
+    }
+  };
 
   // Cargar lista de usuarios (solo si es admin) para el filtro
   useEffect(() => {
@@ -179,6 +248,64 @@ export function ArqueoPage() {
         }
       />
 
+      {/* Estado del Turno de Caja */}
+      <div class="print:hidden mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div
+            class={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-inner ${
+              sesionActiva ? 'bg-emerald-600' : 'bg-slate-400'
+            }`}
+          >
+            <Icon name="point_of_sale" size={22} />
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-body-md font-bold text-slate-900">
+                {sesionActiva ? 'Turno de Caja Abierto' : 'Sin Turno de Caja Activo'}
+              </h3>
+              <StatusBadge
+                variant={sesionActiva ? 'activo' : 'inactivo'}
+                label={sesionActiva ? 'Abierta' : 'Cerrada'}
+              />
+            </div>
+            <p class="text-body-xs text-slate-500">
+              {sesionActiva
+                ? `Fondo de cambio: ${fmtMonto(sesionActiva.saldo_inicial_efectivo)} · Abierta por ${sesionActiva.usuario_nombre}`
+                : 'Aperture un turno de caja para registrar el fondo de cambio antes de salir a cobrar.'}
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          {sesionActiva ? (
+            <Button
+              variant="danger"
+              icon="lock"
+              size="sm"
+              onClick={() => {
+                setEfectivoDeclarado('');
+                setObsCierre('');
+                setModalCierre(true);
+              }}
+            >
+              Cierre de Caja y Arqueo
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              icon="add"
+              size="sm"
+              onClick={() => {
+                setSaldoInicial('0.00');
+                setModalApertura(true);
+              }}
+            >
+              Aperturar Turno
+            </Button>
+          )}
+        </div>
+      </div>
+
       <div class="print:hidden mb-6 flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end">
         <div class="flex-1 sm:max-w-xs">
           <Input
@@ -281,6 +408,127 @@ export function ArqueoPage() {
       {pagoSeleccionado && (
         <PagoRecibo pagoId={pagoSeleccionado} onClose={() => setPagoSeleccionado(null)} />
       )}
+
+      {/* Modal Apertura de Caja */}
+      <Modal
+        open={modalApertura}
+        onClose={cerrarApertura}
+        title="Apertura de Turno de Caja"
+        icon="point_of_sale"
+        footer={
+          <>
+            <Button variant="ghost" onClick={cerrarApertura} disabled={cajaSubmitting}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="form-apertura" loading={cajaSubmitting}>
+              Habilitar Caja
+            </Button>
+          </>
+        }
+      >
+        <form id="form-apertura" onSubmit={handleApertura} class="space-y-4">
+          <p class="text-body-sm text-slate-600">
+            Indique el fondo de cambio en efectivo entregado para iniciar la jornada de cobranza.
+          </p>
+          <Input
+            label="Fondo de cambio inicial"
+            type="number"
+            step="0.01"
+            min="0"
+            prefix="C$"
+            value={saldoInicial}
+            onInput={setSaldoInicial}
+            required
+            hint="Monto en monedas y billetes para dar vuelto"
+          />
+        </form>
+      </Modal>
+
+      {/* Modal Cierre de Caja y Arqueo */}
+      <Modal
+        open={modalCierre}
+        onClose={cerrarCierre}
+        title="Cierre de Turno y Conciliación Física"
+        icon="lock"
+        footer={
+          <>
+            <Button variant="ghost" onClick={cerrarCierre} disabled={cajaSubmitting}>
+              Cancelar
+            </Button>
+            <Button variant="danger" type="submit" form="form-cierre" loading={cajaSubmitting}>
+              Finalizar y Cerrar Turno
+            </Button>
+          </>
+        }
+      >
+        <form id="form-cierre" onSubmit={handleCierre} class="space-y-4">
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1 text-body-sm">
+            <div class="flex justify-between">
+              <span class="text-slate-500">Fondo Inicial:</span>
+              <span class="font-bold text-slate-900">{fmtMonto(sesionActiva?.saldo_inicial_efectivo || 0)}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-500">Cobrado en Efectivo Hoy:</span>
+              <span class="font-bold text-emerald-700">{fmtMonto(porMetodo.EFECTIVO)}</span>
+            </div>
+            <div class="flex justify-between border-t border-slate-200 pt-1 text-body-md font-bold">
+              <span class="text-slate-700">Efectivo Total Esperado:</span>
+              <span class="text-slate-900">
+                {fmtMonto(Number(sesionActiva?.saldo_inicial_efectivo || 0) + porMetodo.EFECTIVO)}
+              </span>
+            </div>
+          </div>
+
+          <Input
+            label="Efectivo físico contado en mano"
+            type="number"
+            step="0.01"
+            min="0"
+            prefix="C$"
+            value={efectivoDeclarado}
+            onInput={setEfectivoDeclarado}
+            required
+            placeholder="0.00"
+            hint="Suma de billetes y monedas físicos en posesión"
+          />
+
+          {efectivoDeclarado && (
+            <div class="rounded-xl p-3 border text-body-sm font-semibold">
+              {(() => {
+                const esperado = Number(sesionActiva?.saldo_inicial_efectivo || 0) + porMetodo.EFECTIVO;
+                const contado = Number(efectivoDeclarado) || 0;
+                const dif = contado - esperado;
+                if (dif === 0) {
+                  return (
+                    <div class="text-emerald-700 bg-emerald-50 border-emerald-200 p-2 rounded-lg">
+                      Conciliación exacta: C$0.00 de diferencia.
+                    </div>
+                  );
+                } else if (dif > 0) {
+                  return (
+                    <div class="text-amber-800 bg-amber-50 border-amber-200 p-2 rounded-lg">
+                      Sobrante de caja: +{fmtMonto(dif)}
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div class="text-rose-700 bg-rose-50 border-rose-200 p-2 rounded-lg">
+                      Faltante de caja: -{fmtMonto(Math.abs(dif))}
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          )}
+
+          <Input
+            label="Observaciones de Cierre (Opcional)"
+            value={obsCierre}
+            onInput={setObsCierre}
+            placeholder="Justificación de sobrante/faltante o notas de entrega"
+          />
+        </form>
+      </Modal>
     </Layout>
   );
 }

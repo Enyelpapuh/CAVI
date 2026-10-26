@@ -8,12 +8,14 @@ interface BotonPagareProps {
   prestamoId: number;
   class?: string;
   variant?: ButtonVariant;
+  size?: 'sm' | 'md' | 'lg';
   label?: string;
+  abrirVentana?: boolean;
   onError?: (mensaje: string) => void;
 }
 
 /**
- * Descarga el pagaré legal del préstamo (CAVI-TK25).
+ * Descarga o previsualiza el pagaré legal del préstamo (CAVI-TK25).
  *
  * El backend responde PDF; si la máquina no tiene motor PDF configurado
  * devuelve 503 y aquí se degrada abriendo el pagaré HTML en una pestaña para
@@ -24,7 +26,9 @@ export function BotonPagare({
   prestamoId,
   class: className,
   variant = 'secondary',
+  size = 'md',
   label = 'Pagaré',
+  abrirVentana = false,
   onError,
 }: BotonPagareProps) {
   const [descargando, setDescargando] = useState(false);
@@ -65,13 +69,29 @@ export function BotonPagare({
     }
   };
 
+  const handleClick = async () => {
+    if (abrirVentana) {
+      setDescargando(true);
+      try {
+        await imprimirHtml();
+      } catch {
+        onError?.('No se pudo abrir el pagaré.');
+      } finally {
+        setDescargando(false);
+      }
+    } else {
+      await descargar();
+    }
+  };
+
   return (
     <Button
       class={className}
       variant={variant}
+      size={size}
       icon="description"
       loading={descargando}
-      onClick={descargar}
+      onClick={handleClick}
       data-testid={`pagare-${prestamoId}`}
     >
       {descargando ? 'Generando' : label}

@@ -94,9 +94,9 @@ class TestImporteEnLetras:
         assert entero_a_letras(entero) == esperado
 
     def test_numero_con_centavos(self):
-        assert numero_a_letras(Decimal('50000.00')) == 'cincuenta mil 00/100'
-        assert numero_a_letras(Decimal('1234.50')) == 'mil doscientos treinta y cuatro 50/100'
-        assert numero_a_letras(Decimal('100.05')) == 'cien 05/100'
+        assert numero_a_letras(Decimal('50000.00')) == 'cincuenta mil con cero centavos (00/100)'
+        assert numero_a_letras(Decimal('1234.50')) == 'mil doscientos treinta y cuatro con cincuenta centavos (50/100)'
+        assert numero_a_letras(Decimal('100.05')) == 'cien con cinco centavos (05/100)'
 
 
 class TestPlantillaPagare:
@@ -104,7 +104,7 @@ class TestPlantillaPagare:
         html = html_pagare(prestamo, usados_por='Test Admin')
 
         assert 'PAGARÉ' in html
-        assert 'cincuenta mil 00/100' in html          # importe en letras
+        assert 'cincuenta mil con cero centavos (00/100)' in html  # importe en letras con decimales
         assert 'C$50,000.00' in html                    # importe numérico
         assert 'Juan Perez' in html                     # deudor
         assert '001-111222-3' in html                   # cédula
@@ -132,9 +132,14 @@ class TestPlantillaPagare:
         assert 'stylesheet' not in html  # sin CSS externo
 
     def test_genera_pdf_real(self, prestamo):
+        import io
+        from pypdf import PdfReader
+
         contenido = pdf_pagare(prestamo, usados_por='Test Admin')
         assert contenido.startswith(b'%PDF')
         assert len(contenido) > 2000
+        reader = PdfReader(io.BytesIO(contenido))
+        assert len(reader.pages) == 2, f"Se esperaban exactamente 2 páginas pero se generaron {len(reader.pages)}"
 
 
 class TestEndpointPagare:
