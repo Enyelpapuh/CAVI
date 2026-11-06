@@ -35,14 +35,12 @@ export function LoginPage() {
     <div class="flex min-h-screen bg-slate-50">
       {/* Lado A: Minimalista, sin degradados */}
       <div class="hidden w-1/2 flex-col justify-center items-center bg-slate-900 px-12 lg:flex">
-        <div class="max-w-md space-y-6 text-white">
-          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-green-600">
-            <svg fill="currentColor" viewBox="0 0 24 24" class="h-8 w-8">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-            </svg>
+        <div class="max-w-md space-y-6 text-white text-center flex flex-col items-center">
+          <div class="flex h-24 w-24 items-center justify-center rounded-3xl bg-white/10 p-3 shadow-xl backdrop-blur-sm border border-white/10">
+            <img src="/cavi-logo.svg" alt="CAVI" class="h-full w-full object-contain" />
           </div>
-          <h1 class="text-4xl font-semibold tracking-tight text-slate-50">Control y Seguridad Financiera</h1>
-          <p class="text-lg text-slate-400">
+          <h1 class="text-3xl font-bold tracking-tight text-slate-50">Control y Seguridad Financiera</h1>
+          <p class="text-body-md text-slate-400">
             Sistema de Administración de Inversiones Crediticias diseñado para operar con simplicidad y precisión.
           </p>
         </div>
@@ -52,6 +50,9 @@ export function LoginPage() {
       <div class="flex w-full items-center justify-center px-4 sm:px-6 lg:w-1/2 lg:px-8">
         <div class="w-full max-w-sm space-y-8">
           <div class="text-center lg:text-left">
+            <div class="mb-5 flex justify-center lg:justify-start">
+              <img src="/cavi-logo.svg" alt="CAVI Logo" class="h-14 w-auto object-contain" />
+            </div>
             <h2 class="text-3xl font-bold tracking-tight text-slate-900">Bienvenido de nuevo</h2>
             <p class="mt-2 text-sm text-slate-500">
               Ingresa tus credenciales para acceder a tu panel

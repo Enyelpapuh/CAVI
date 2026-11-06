@@ -7,6 +7,7 @@ import {
   DataTable,
   EmptyState,
   Icon,
+  Input,
   KpiTile,
   Select,
   Spinner,
@@ -117,7 +118,7 @@ export function InformeBolsasPage() {
       header: 'Bolsa Familiar',
       render: (f) => (
         <div>
-          <span class="font-bold text-slate-900 block">{f.nombre}</span>
+          <span class="font-bold text-slate-900 block text-body-sm">{f.nombre}</span>
           <span class="text-body-xs text-slate-500">Titular: {f.familiar}</span>
         </div>
       ),
@@ -128,8 +129,8 @@ export function InformeBolsasPage() {
       align: 'right',
       render: (f) => (
         <div>
-          <span class="tnum font-bold text-emerald-700 block">{fmtMonto(f.capital_reintegrado)}</span>
-          <span class="text-[11px] text-slate-400">Abonos a capital</span>
+          <span class="tnum font-mono font-bold text-emerald-700 block">{fmtMonto(f.capital_reintegrado)}</span>
+          <span class="text-[11px] text-slate-400 font-medium">Abonos a capital</span>
         </div>
       ),
     },
@@ -139,8 +140,8 @@ export function InformeBolsasPage() {
       align: 'right',
       render: (f) => (
         <div>
-          <span class="tnum font-bold text-amber-600 block">{fmtMonto(f.ganancia_interes)}</span>
-          <span class="text-[11px] text-slate-400">Ganancia neta 50%</span>
+          <span class="tnum font-mono font-bold text-amber-600 block">{fmtMonto(f.ganancia_interes)}</span>
+          <span class="text-[11px] text-slate-400 font-medium">Ganancia neta 50%</span>
         </div>
       ),
     },
@@ -149,7 +150,7 @@ export function InformeBolsasPage() {
       header: 'Total Acreditado',
       align: 'right',
       render: (f) => (
-        <span class="tnum font-extrabold text-slate-900 block">
+        <span class="tnum font-mono font-extrabold text-slate-900 block">
           {fmtMonto(f.total_acreditado)}
         </span>
       ),
@@ -159,7 +160,7 @@ export function InformeBolsasPage() {
       header: 'Desembolsos',
       align: 'right',
       render: (f) => (
-        <span class="tnum text-slate-600 block">
+        <span class="tnum font-mono text-slate-600 block">
           {fmtMonto(f.desembolsos_mes)}
         </span>
       ),
@@ -171,7 +172,7 @@ export function InformeBolsasPage() {
       render: (f) => {
         const val = Number(f.flujo_neto);
         return (
-          <span class={`tnum font-black ${val >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+          <span class={`tnum font-mono font-black ${val >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
             {val >= 0 ? '+' : ''}{fmtMonto(f.flujo_neto)}
           </span>
         );
@@ -183,7 +184,7 @@ export function InformeBolsasPage() {
     {
       key: 'fecha',
       header: 'Fecha',
-      render: (t) => <span class="tnum text-slate-700 font-medium">{fmtFecha(t.fecha_pago)}</span>,
+      render: (t) => <span class="tnum font-mono text-slate-700 font-medium text-body-xs">{fmtFecha(t.fecha_pago)}</span>,
     },
     {
       key: 'comprobante',
@@ -193,7 +194,7 @@ export function InformeBolsasPage() {
           <span class="font-mono text-xs font-bold text-slate-900">{t.codigo_comprobante || `#${t.pago_id}`}</span>
           <span class="block text-body-xs text-slate-500">{t.metodo_pago}</span>
           {t.referencia_bancaria && (
-            <span class="block text-[10px] text-slate-400">Ref: {t.referencia_bancaria}</span>
+            <span class="block text-[10px] text-slate-400 font-mono">Ref: {t.referencia_bancaria}</span>
           )}
         </div>
       ),
@@ -203,7 +204,7 @@ export function InformeBolsasPage() {
       header: 'Cliente / Crédito',
       render: (t) => (
         <div>
-          <span class="font-medium text-slate-900 block truncate max-w-xs">{t.cliente}</span>
+          <span class="font-semibold text-slate-900 block truncate max-w-xs text-body-sm">{t.cliente}</span>
           <span class="text-body-xs text-slate-500">Préstamo #{t.prestamo_id}</span>
         </div>
       ),
@@ -213,7 +214,7 @@ export function InformeBolsasPage() {
       header: 'Total Cobrado',
       align: 'right',
       render: (t) => (
-        <span class="tnum font-bold text-slate-900">
+        <span class="tnum font-mono font-bold text-slate-900">
           {fmtMonto(t.monto_total || (Number(t.capital_reintegrado) + Number(t.ganancia_interes)))}
         </span>
       ),
@@ -222,21 +223,21 @@ export function InformeBolsasPage() {
       key: 'capital',
       header: 'Amortización Capital',
       align: 'right',
-      render: (t) => <span class="tnum font-bold text-emerald-700">{fmtMonto(t.capital_reintegrado)}</span>,
+      render: (t) => <span class="tnum font-mono font-bold text-emerald-700">{fmtMonto(t.capital_reintegrado)}</span>,
     },
     {
       key: 'interes',
       header: 'Interés Corriente',
       align: 'right',
-      render: (t) => <span class="tnum font-bold text-amber-600">{fmtMonto(t.ganancia_interes)}</span>,
+      render: (t) => <span class="tnum font-mono font-bold text-amber-600">{fmtMonto(t.ganancia_interes)}</span>,
     },
     {
       key: 'fondo',
       header: 'Bolsa Aportante',
       render: (t) => (
         <div>
-          <span class="font-semibold text-slate-800 block">{t.fondo_nombre}</span>
-          <span class="text-body-xs text-slate-500">Pi: {(Number(t.porcentaje_pi) * 100).toFixed(2)}%</span>
+          <span class="font-semibold text-slate-800 block text-body-xs">{t.fondo_nombre}</span>
+          <span class="text-body-xs text-slate-500 font-mono">Pi: {(Number(t.porcentaje_pi) * 100).toFixed(2)}%</span>
         </div>
       ),
     },
@@ -249,7 +250,7 @@ export function InformeBolsasPage() {
       render: (c) => (
         <div>
           <span class="font-mono text-xs font-bold text-rose-700 line-through block">{c.codigo_comprobante}</span>
-          <span class="inline-block rounded bg-rose-100 px-1.5 py-0.2 text-[10px] font-bold uppercase text-rose-800 border border-rose-200 mt-0.5">
+          <span class="inline-block rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-800 border border-rose-200 mt-0.5">
             INVÁLIDO
           </span>
         </div>
@@ -259,7 +260,7 @@ export function InformeBolsasPage() {
       key: 'fechas',
       header: 'Fechas',
       render: (c) => (
-        <div class="text-body-xs">
+        <div class="text-body-xs font-mono">
           <span class="text-slate-600 block">Cobro: {fmtFecha(c.fecha_pago)}</span>
           <span class="text-rose-700 font-semibold block">Anulado: {fmtFecha(c.fecha_anulacion)}</span>
         </div>
@@ -270,7 +271,7 @@ export function InformeBolsasPage() {
       header: 'Cliente / Crédito',
       render: (c) => (
         <div>
-          <span class="font-medium text-slate-900 block truncate max-w-xs">{c.cliente}</span>
+          <span class="font-semibold text-slate-900 block truncate max-w-xs text-body-sm">{c.cliente}</span>
           <span class="text-body-xs text-slate-500">Préstamo #{c.prestamo_id}</span>
         </div>
       ),
@@ -281,8 +282,8 @@ export function InformeBolsasPage() {
       align: 'right',
       render: (c) => (
         <div>
-          <span class="tnum font-bold text-rose-800 block">{fmtMonto(c.monto_total)}</span>
-          <span class="text-[10px] text-slate-400">Cap: {fmtMonto(c.aplicacion_capital)} · Int: {fmtMonto(c.aplicacion_interes)}</span>
+          <span class="tnum font-mono font-bold text-rose-800 block">{fmtMonto(c.monto_total)}</span>
+          <span class="text-[10px] font-mono text-slate-500">Cap: {fmtMonto(c.aplicacion_capital)} · Int: {fmtMonto(c.aplicacion_interes)}</span>
         </div>
       ),
     },
@@ -291,12 +292,14 @@ export function InformeBolsasPage() {
       header: 'Motivo y Autorización',
       render: (c) => (
         <div class="max-w-xs">
-          <span class="italic text-slate-800 font-medium block">&ldquo;{c.motivo_anulacion}&rdquo;</span>
+          <span class="italic text-slate-800 font-medium block text-body-xs">&ldquo;{c.motivo_anulacion}&rdquo;</span>
           <span class="text-[10px] text-slate-500 block mt-0.5">Autorizado por: {c.anulado_por_nombre}</span>
         </div>
       ),
     },
   ];
+
+  const esBolsaIndividual = Boolean(informe?.fondo_info);
 
   return (
     <Layout titulo="Informes Financieros">
@@ -329,7 +332,11 @@ export function InformeBolsasPage() {
 
       <PageHeader
         titulo="Informe Financiero Mensual"
-        descripcion={`Liquidación consolidada de rendimientos, recaudación bruta, colocación y auditoría de operaciones · ${nombreMesActual} ${anio}`}
+        descripcion={
+          informe?.fondo_info
+            ? `Liquidación financiera individual para ${informe.fondo_info.nombre} (${informe.fondo_info.familiar}) · ${nombreMesActual} ${anio}`
+            : `Liquidación consolidada de rendimientos, recaudación bruta, colocación y auditoría de operaciones · ${nombreMesActual} ${anio}`
+        }
       />
 
       {/* Barra de Filtros del Periodo (Oculto al imprimir) */}
@@ -342,17 +349,19 @@ export function InformeBolsasPage() {
               onChange={(val) => setMes(Number(val))}
               options={MESES}
             />
-            <div>
-              <label class="mb-1.5 block text-label-md text-slate-700">Año</label>
-              <input
-                type="number"
-                value={anio}
-                onInput={(e) => setAnio(Number((e.currentTarget as HTMLInputElement).value))}
-                min="2020"
-                max="2035"
-                class="h-[38px] w-full rounded-md border border-slate-300 bg-white px-3 text-body-md text-slate-900 outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600"
-              />
-            </div>
+            <Input
+              label="Año"
+              type="number"
+              value={String(anio)}
+              onInput={(val) => {
+                const num = Number(val);
+                if (!isNaN(num) && num >= 2000 && num <= 2099) {
+                  setAnio(num);
+                }
+              }}
+              min="2020"
+              max="2035"
+            />
             <Select
               label="Filtrar por Bolsa"
               value={fondoSeleccionado}
@@ -361,7 +370,7 @@ export function InformeBolsasPage() {
             />
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2 pb-0.5">
             <Button size="sm" variant="secondary" onClick={aplicarMesActual}>
               Mes Actual
             </Button>
@@ -390,8 +399,71 @@ export function InformeBolsasPage() {
         </div>
       ) : (
         <div class="mt-6 space-y-6">
+          {/* Ficha de Identidad de la Bolsa Individual cuando está filtrada */}
+          {informe.fondo_info && (
+            <div class="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-white p-5 shadow-xs transition-all">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div class="flex items-start gap-3.5">
+                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
+                    <Icon name="account_balance_wallet" size={26} />
+                  </div>
+                  <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-label-xs font-bold uppercase tracking-wider text-blue-700">
+                        Ficha de Bolsa Individual
+                      </span>
+                      <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-label-xs font-bold text-blue-800">
+                        {informe.fondo_info.tipo_persona === 'JURIDICA' ? 'Persona Jurídica' : 'Persona Natural'}
+                      </span>
+                    </div>
+                    <h3 class="text-title-md font-bold text-slate-900 mt-0.5">
+                      {informe.fondo_info.nombre}
+                    </h3>
+                    <p class="text-body-xs text-slate-600">
+                      Titular: <span class="font-semibold text-slate-800">{informe.fondo_info.familiar}</span>
+                      {informe.fondo_info.tipo_persona === 'JURIDICA' ? (
+                        <>
+                          {' '}· RUC: <span class="font-mono font-medium text-slate-800">{informe.fondo_info.ruc || 'N/D'}</span>
+                          {informe.fondo_info.razon_social ? ` (${informe.fondo_info.razon_social})` : ''}
+                        </>
+                      ) : (
+                        <>
+                          {' '}· Cédula: <span class="font-mono font-medium text-slate-800">{informe.fondo_info.cedula_titular || 'N/D'}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                  <div class="rounded-xl border border-slate-200/90 bg-white/95 px-4 py-2 text-right shadow-2xs">
+                    <span class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Saldo Disponible</span>
+                    <span class="tnum font-mono text-title-sm font-bold text-emerald-700 block">
+                      {fmtMonto(informe.fondo_info.saldo_disponible)}
+                    </span>
+                  </div>
+                  <div class="rounded-xl border border-slate-200/90 bg-white/95 px-4 py-2 text-right shadow-2xs">
+                    <span class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Ganancias Acumuladas</span>
+                    <span class="tnum font-mono text-title-sm font-bold text-amber-700 block">
+                      {fmtMonto(informe.fondo_info.ganancias_acumuladas)}
+                    </span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="close"
+                    onClick={() => setFondoSeleccionado('')}
+                    class="border-blue-200 text-blue-700 hover:bg-blue-100/50"
+                  >
+                    Ver Consolidado
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Selector de Pestañas Internas del Informe */}
-          <div class="flex border-b border-slate-200 bg-white rounded-t-xl px-4 text-body-sm font-semibold print:hidden">
+          <div class="flex border-b border-slate-200 bg-white rounded-t-xl px-4 text-label-sm font-semibold print:hidden overflow-x-auto">
             <button
               type="button"
               onClick={() => setTabActiva('resumen')}
@@ -414,8 +486,8 @@ export function InformeBolsasPage() {
               }`}
             >
               <Icon name="account_balance_wallet" size={16} />
-              <span>Rendimiento por Bolsa</span>
-              <span class="rounded-full bg-slate-100 px-2 py-0.2 text-[10px] text-slate-700">
+              <span>{esBolsaIndividual ? 'Rendimiento de la Bolsa' : 'Rendimiento por Bolsa'}</span>
+              <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-mono font-semibold text-slate-700">
                 {informe.desglose_fondos.length}
               </span>
             </button>
@@ -430,7 +502,7 @@ export function InformeBolsasPage() {
             >
               <Icon name="receipt" size={16} />
               <span>Libro de Transacciones</span>
-              <span class="rounded-full bg-slate-100 px-2 py-0.2 text-[10px] text-slate-700">
+              <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-mono font-semibold text-slate-700">
                 {informe.transacciones.length}
               </span>
             </button>
@@ -446,42 +518,58 @@ export function InformeBolsasPage() {
               <Icon name="cancel" size={16} class={tabActiva === 'cancelados' ? 'text-rose-600' : ''} />
               <span>Operaciones Canceladas</span>
               {Boolean(informe.seccion_cancelados?.cantidad) && (
-                <span class="rounded-full bg-rose-100 px-2 py-0.2 text-[10px] text-rose-800 font-bold border border-rose-300">
+                <span class="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-mono font-bold text-rose-800 border border-rose-300">
                   {informe.seccion_cancelados?.cantidad}
                 </span>
               )}
             </button>
           </div>
 
-          {/* KPIs Consolidados del Mes */}
+          {/* KPIs Consolidados o Individuales del Mes */}
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <KpiTile
               label="Ingreso por Intereses"
-              value={fmtMonto(informe.resumen.interes_total)}
+              value={fmtMonto(esBolsaIndividual ? informe.resumen.interes_fondos : informe.resumen.interes_total)}
               icon="trending_up"
               tono="esmeralda"
-              pie={`Fondos: ${fmtMonto(informe.resumen.interes_fondos)} (50%) · CAVI: ${fmtMonto(informe.resumen.interes_admin)}`}
+              pie={
+                informe.fondo_info
+                  ? `Ganancia neta 50% acreditada a ${informe.fondo_info.nombre}`
+                  : `Fondos: ${fmtMonto(informe.resumen.interes_fondos)} (50%) · CAVI: ${fmtMonto(informe.resumen.interes_admin)}`
+              }
             />
             <KpiTile
               label="Capital Reintegrado"
               value={fmtMonto(informe.resumen.capital_retornado)}
               icon="task_alt"
               tono="indigo"
-              pie="Abonado a capital por clientes"
+              pie={
+                informe.fondo_info
+                  ? `Amortizaciones reingresadas a la bolsa`
+                  : "Abonado a capital por clientes"
+              }
             />
             <KpiTile
               label="Total Recaudado en Mes"
               value={fmtMonto(informe.resumen.total_recaudado)}
               icon="savings"
               tono="ambar"
-              pie={`${informe.resumen.cantidad_pagos} cobros efectivos`}
+              pie={
+                informe.fondo_info
+                  ? `${informe.resumen.cantidad_pagos} cuotas con participación`
+                  : `${informe.resumen.cantidad_pagos} cobros efectivos`
+              }
             />
             <KpiTile
               label="Flujo Neto Mensual"
               value={fmtMonto(informe.resumen.flujo_neto)}
               icon="account_balance"
               tono={Number(informe.resumen.flujo_neto) >= 0 ? 'esmeralda' : 'rosa'}
-              pie={`Desembolsos: ${fmtMonto(informe.resumen.desembolsos_mes)}`}
+              pie={
+                informe.fondo_info
+                  ? `Colocación del mes: ${fmtMonto(informe.resumen.desembolsos_mes)}`
+                  : `Desembolsos: ${fmtMonto(informe.resumen.desembolsos_mes)}`
+              }
             />
           </div>
 
@@ -490,19 +578,27 @@ export function InformeBolsasPage() {
             <div class="space-y-6">
               {informe.comparativa_mes_anterior && (
                 <Card
-                  title={`Comparativa de Rendimiento con Mes Anterior (${nombreMesActual} vs. ${nombreMesAnterior})`}
-                  subtitle="Análisis Month-over-Month (MoM) de variación nominal en córdobas y crecimiento porcentual"
+                  title={
+                    informe.fondo_info
+                      ? `Comparativa de Rendimiento de la Bolsa (${nombreMesActual} vs. ${nombreMesAnterior})`
+                      : `Comparativa de Rendimiento con Mes Anterior (${nombreMesActual} vs. ${nombreMesAnterior})`
+                  }
+                  subtitle={
+                    informe.fondo_info
+                      ? `Análisis Month-over-Month (MoM) de retornos y recaudación de ${informe.fondo_info.nombre}`
+                      : "Análisis Month-over-Month (MoM) de variación nominal en córdobas y crecimiento porcentual"
+                  }
                   padded={false}
                 >
                   <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
-                      <thead class="border-b border-slate-200 bg-slate-50 text-xs uppercase font-bold text-slate-600">
+                      <thead class="border-b border-slate-200 bg-slate-50/90 text-label-xs font-bold uppercase tracking-wider text-slate-600">
                         <tr>
-                          <th class="py-3 px-4">Indicador Financiero</th>
-                          <th class="py-3 px-4 text-right">{nombreMesActual} {anio}</th>
-                          <th class="py-3 px-4 text-right">{nombreMesAnterior} {informe.comparativa_mes_anterior.anio_anterior}</th>
-                          <th class="py-3 px-4 text-right">Variación (C$)</th>
-                          <th class="py-3 px-4 text-right">Crecimiento (%)</th>
+                          <th class="py-3.5 px-4">Indicador Financiero</th>
+                          <th class="py-3.5 px-4 text-right">{nombreMesActual} {anio}</th>
+                          <th class="py-3.5 px-4 text-right">{nombreMesAnterior} {informe.comparativa_mes_anterior.anio_anterior}</th>
+                          <th class="py-3.5 px-4 text-right">Variación (C$)</th>
+                          <th class="py-3.5 px-4 text-right">Crecimiento (%)</th>
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-slate-100">
@@ -520,20 +616,20 @@ export function InformeBolsasPage() {
                           const pct = Number(row.data.porcentaje);
                           const sub = row.sub;
                           return (
-                            <tr key={row.label} class={`hover:bg-slate-50/70 ${sub ? 'bg-slate-50/30 text-xs' : ''}`}>
-                              <td class={`py-2.5 px-4 font-medium ${sub ? 'pl-8 text-slate-600' : 'text-slate-900'}`}>
+                            <tr key={row.label} class={`hover:bg-slate-50/70 transition-colors ${sub ? 'bg-slate-50/40 text-xs' : ''}`}>
+                              <td class={`py-3 px-4 font-medium ${sub ? 'pl-8 text-slate-600' : 'text-slate-900 text-body-sm'}`}>
                                 {row.label}
                               </td>
-                              <td class="py-2.5 px-4 text-right tnum font-bold text-slate-900">
+                              <td class="py-3 px-4 text-right tnum font-mono font-bold text-slate-900">
                                 {row.esMonto ? fmtMonto(row.data.actual) : row.data.actual}
                               </td>
-                              <td class="py-2.5 px-4 text-right tnum text-slate-500">
+                              <td class="py-3 px-4 text-right tnum font-mono text-slate-500">
                                 {row.esMonto ? fmtMonto(row.data.anterior) : row.data.anterior}
                               </td>
-                              <td class={`py-2.5 px-4 text-right tnum font-bold ${diff > 0 ? 'text-emerald-700' : diff < 0 ? 'text-rose-700' : 'text-slate-500'}`}>
+                              <td class={`py-3 px-4 text-right tnum font-mono font-bold ${diff > 0 ? 'text-emerald-700' : diff < 0 ? 'text-rose-700' : 'text-slate-500'}`}>
                                 {diff > 0 ? '+' : ''}{row.esMonto ? fmtMonto(row.data.diferencia) : row.data.diferencia}
                               </td>
-                              <td class="py-2.5 px-4 text-right tnum">
+                              <td class="py-3 px-4 text-right tnum font-mono">
                                 <span class={`inline-block px-2 py-0.5 rounded text-xs font-bold ${pct > 0 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : pct < 0 ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-slate-100 text-slate-600'}`}>
                                   {pct > 0 ? '+' : ''}{row.data.porcentaje}%
                                 </span>
@@ -572,8 +668,28 @@ export function InformeBolsasPage() {
                 </div>
               </div>
 
+              {informe.fondo_info && (
+                <div class="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-body-xs text-blue-900">
+                  <div class="flex items-center gap-2">
+                    <Icon name="info" class="text-blue-600 shrink-0" size={18} />
+                    <span>Mostrando únicamente la liquidación individual de <strong>{informe.fondo_info.nombre}</strong>.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFondoSeleccionado('')}
+                    class="text-label-xs font-bold text-blue-700 hover:underline cursor-pointer"
+                  >
+                    Ver todas las bolsas
+                  </button>
+                </div>
+              )}
+
               <Card
-                title={`Liquidación por Bolsa Familiar (${nombreMesActual} ${anio})`}
+                title={
+                  informe.fondo_info
+                    ? `Liquidación Individual (${informe.fondo_info.nombre} · ${nombreMesActual} ${anio})`
+                    : `Liquidación por Bolsa Familiar (${nombreMesActual} ${anio})`
+                }
                 subtitle="Desglose de capital reintegrado, ganancias de interés (50% fondos) y balance neto mensual"
                 padded={false}
               >
@@ -596,8 +712,16 @@ export function InformeBolsasPage() {
           {/* PESTAÑA 3: LIBRO DE TRANSACCIONES VIGENTES */}
           {(tabActiva === 'transacciones' || window.matchMedia?.('print').matches) && (
             <Card
-              title="Libro de Cobros y Transacciones Vigentes"
-              subtitle="Registro cronológico y auditable de cobros asentados efectivamente en el período"
+              title={
+                informe.fondo_info
+                  ? `Libro de Cobros y Transacciones (${informe.fondo_info.nombre})`
+                  : "Libro de Cobros y Transacciones Vigentes"
+              }
+              subtitle={
+                informe.fondo_info
+                  ? `Cobros del período donde participó el capital de ${informe.fondo_info.nombre}`
+                  : "Registro cronológico y auditable de cobros asentados efectivamente en el período"
+              }
               padded={false}
             >
               {informe.transacciones.length === 0 ? (
@@ -628,7 +752,9 @@ export function InformeBolsasPage() {
                       Auditoría de Transacciones y Recibos Cancelados
                     </h4>
                     <p class="text-body-xs text-rose-800 mt-1">
-                      Registro inmutable de recibos anulados y contratos rescindidos durante el período bajo la Ley N° 977 (UAF).
+                      {informe.fondo_info
+                        ? `Registro inmutable de recibos anulados que impactaron a ${informe.fondo_info.nombre} bajo la Ley N° 977 (UAF).`
+                        : "Registro inmutable de recibos anulados y contratos rescindidos durante el período bajo la Ley N° 977 (UAF)."}
                     </p>
                   </div>
                   <div class="text-right">
@@ -641,7 +767,11 @@ export function InformeBolsasPage() {
               </div>
 
               <Card
-                title="Detalle de Comprobantes Invalidados"
+                title={
+                  informe.fondo_info
+                    ? `Detalle de Comprobantes Invalidados (${informe.fondo_info.nombre})`
+                    : "Detalle de Comprobantes Invalidados"
+                }
                 subtitle="Motivo justificado, montos debitados y administradores que autorizaron la reversión"
                 padded={false}
               >
@@ -667,5 +797,6 @@ export function InformeBolsasPage() {
     </Layout>
   );
 }
+
 export default InformeBolsasPage;
 

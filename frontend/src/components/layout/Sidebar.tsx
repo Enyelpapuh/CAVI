@@ -26,13 +26,14 @@ export function Sidebar({ onNavegar, colapsado = false, onToggleColapsar }: { on
       <div class="flex flex-col overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
         <div class={`flex h-16 items-center border-b border-slate-800 ${colapsado ? 'justify-center' : 'justify-between px-6'}`}>
           <div class="flex items-center gap-3">
-            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-700 transition-transform hover:scale-105">
-              <Icon name="account_balance" size={20} class="text-white" />
-            </span>
+            <img
+              src="/cavi-logo.svg"
+              alt="Logo CAVI"
+              class={`object-contain transition-all ${colapsado ? 'h-8 w-8' : 'h-8 w-auto max-w-[130px]'}`}
+            />
             {!colapsado && (
-              <span class="flex flex-col">
-                <span class="text-headline-sm font-bold tracking-tight text-slate-100">CAVI</span>
-                <span class="text-[10px] uppercase tracking-widest text-slate-400">Admin</span>
+              <span class="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border border-slate-700/60">
+                {user?.rol === 'ADMINISTRADOR' ? 'Admin' : 'Cobranza'}
               </span>
             )}
           </div>

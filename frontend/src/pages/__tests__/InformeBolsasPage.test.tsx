@@ -162,5 +162,42 @@ describe('InformeBolsasPage (Rendimiento Financiero de Bolsas)', () => {
       expect(fondoService.informeFinanciero).toHaveBeenCalled();
     });
   });
+
+  it('muestra la ficha patrimonial y datos individuales al filtrar por una bolsa', async () => {
+    const INFORME_INDIVIDUAL_MOCK = {
+      ...INFORME_MOCK,
+      fondo_info: {
+        id: 1,
+        nombre: 'Fondo Principal',
+        familiar: 'Fam Uno',
+        tipo_persona: 'NATURAL' as const,
+        cedula_titular: '001-010190-0001A',
+        ruc: '',
+        razon_social: '',
+        saldo_disponible: '50000.00',
+        ganancias_acumuladas: '12400.00',
+        capital_inicial: '100000.00',
+        total_desembolsado: '35000.00',
+      },
+      desglose_fondos: [INFORME_MOCK.desglose_fondos[0]],
+    };
+
+    (fondoService.informeFinanciero as any).mockResolvedValue(INFORME_INDIVIDUAL_MOCK);
+
+    render(<InformeBolsasPage />);
+
+    await waitFor(() => expect(screen.getByText('Informe Financiero Mensual')).toBeInTheDocument());
+
+    const selectBolsa = screen.getByLabelText(/Filtrar por Bolsa/i);
+    fireEvent.change(selectBolsa, { target: { value: '1' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Ficha de Bolsa Individual')).toBeInTheDocument();
+      expect(screen.getByText('Persona Natural')).toBeInTheDocument();
+      expect(screen.getByText('001-010190-0001A')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Ver Consolidado/i })).toBeInTheDocument();
+    });
+  });
 });
+
 

@@ -402,6 +402,20 @@ export interface TransaccionCanceladaPeriodo {
   anulado_por_nombre: string;
 }
 
+export interface FondoInfoInforme {
+  id: number;
+  nombre: string;
+  familiar: string;
+  tipo_persona: 'NATURAL' | 'JURIDICA';
+  cedula_titular: string;
+  ruc: string;
+  razon_social: string;
+  saldo_disponible: string;
+  ganancias_acumuladas: string;
+  capital_inicial: string;
+  total_desembolsado: string;
+}
+
 export interface InformeFinancieroResponse {
   mes: number;
   anio: number;
@@ -437,6 +451,7 @@ export interface InformeFinancieroResponse {
   };
   desglose_fondos: DesgloseFondoPeriodo[];
   transacciones: TransaccionPeriodo[];
+  fondo_info?: FondoInfoInforme | null;
 }
 
 export interface ConfiguracionSistema {

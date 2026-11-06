@@ -45,8 +45,8 @@ Usuario = get_user_model()
 def _serializar_calculo(calculo):
     """Convierte Decimals y fechas a texto, incluso en dicts anidados.
 
-    El desglose de prelación incluye `detalle_mora`, por lo que la conversión
-    tiene que ser recursiva para no perder precisión al serializar.
+    El desglose de prelaciÃ³n incluye `detalle_mora`, por lo que la conversiÃ³n
+    tiene que ser recursiva para no perder precisiÃ³n al serializar.
     """
     if isinstance(calculo, dict):
         return {k: _serializar_calculo(v) for k, v in calculo.items()}
@@ -83,7 +83,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     codigo_evento='INICIO_SESION',
                     nivel_severidad='INFORMATIVO',
                     usuario=usuario,
-                    observaciones=f"Inicio de sesión exitoso del usuario: {usuario.correo} ({usuario.rol}).",
+                    observaciones=f"Inicio de sesiÃ³n exitoso del usuario: {usuario.correo} ({usuario.rol}).",
                     request=request
                 )
         return response
@@ -122,7 +122,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             nivel_severidad='INFORMATIVO',
             usuario=self.request.user if getattr(self.request.user, 'is_authenticated', False) else None,
             datos_nuevos=datos,
-            observaciones=f"Creación de nuevo usuario: {usuario.correo} ({usuario.nombre_completo}) con rol {usuario.rol}.",
+            observaciones=f"CreaciÃ³n de nuevo usuario: {usuario.correo} ({usuario.nombre_completo}) con rol {usuario.rol}.",
             request=self.request
         )
 
@@ -166,7 +166,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         else:
             codigo_evento = 'USU_MODIFICADO'
             nivel_severidad = 'INFORMATIVO'
-            observaciones = f"Modificación de perfil del usuario: {usuario.correo} ({usuario.nombre_completo})."
+            observaciones = f"ModificaciÃ³n de perfil del usuario: {usuario.correo} ({usuario.nombre_completo})."
 
         registrar_auditoria(
             modulo='SEGURIDAD',
@@ -186,7 +186,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             'rol': instance.rol,
             'activo': instance.activo,
         }
-        observaciones = f"Eliminación de usuario del sistema: {instance.correo} ({instance.nombre_completo})."
+        observaciones = f"EliminaciÃ³n de usuario del sistema: {instance.correo} ({instance.nombre_completo})."
         registrar_auditoria(
             modulo='SEGURIDAD',
             codigo_evento='USU_ELIMINADO',
@@ -267,7 +267,7 @@ class ClienteViewSet(viewsets.ModelViewSet):
             cliente=cliente,
             datos_anteriores=datos_anteriores,
             datos_nuevos=datos_nuevos,
-            observaciones=f"Modificación en expediente de {cliente.nombres} {cliente.apellidos} ({cliente.cedula}).",
+            observaciones=f"ModificaciÃ³n en expediente de {cliente.nombres} {cliente.apellidos} ({cliente.cedula}).",
             request=self.request
         )
 
@@ -280,7 +280,7 @@ class ClienteViewSet(viewsets.ModelViewSet):
             nivel_severidad='ADVERTENCIA',
             usuario=self.request.user,
             cliente=instance,
-            observaciones=f"Desactivación lógica de prestatario: {instance.nombres} {instance.apellidos} ({instance.cedula}).",
+            observaciones=f"DesactivaciÃ³n lÃ³gica de prestatario: {instance.nombres} {instance.apellidos} ({instance.cedula}).",
             request=self.request
         )
 
@@ -325,7 +325,7 @@ class FondoViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         monto = serializer.validated_data['monto']
-        descripcion = serializer.validated_data.get('descripcion', 'Inyección de capital')
+        descripcion = serializer.validated_data.get('descripcion', 'InyecciÃ³n de capital')
 
         with transaction.atomic():
             fondo.refresh_from_db()
@@ -350,7 +350,7 @@ class FondoViewSet(viewsets.ModelViewSet):
                 fondo=fondo,
                 datos_anteriores={'saldo_disponible': str(saldo_anterior)},
                 datos_nuevos={'saldo_disponible': str(fondo.saldo_disponible)},
-                observaciones=f"Inyección de capital por C${monto:,.2f} al fondo '{fondo.nombre}'. Motivo: {descripcion}.",
+                observaciones=f"InyecciÃ³n de capital por C${monto:,.2f} al fondo '{fondo.nombre}'. Motivo: {descripcion}.",
                 request=request
             )
 
@@ -421,89 +421,25 @@ class FondoViewSet(viewsets.ModelViewSet):
         hoy = timezone.localdate()
         mes = int(request.query_params.get('mes', hoy.month))
         anio = int(request.query_params.get('anio', hoy.year))
-        fondo_id = request.query_params.get('fondo', None)
+        fondo_param = request.query_params.get('fondo', None)
 
-        # 1. Transacciones vigentes del mes (excluye anuladas)
-        pagos_mes = Pago.objects.filter(fecha_pago__month=mes, fecha_pago__year=anio, estado='VALIDO')
-        detalles_mes = PagoFondoDetalle.objects.filter(
-            pago__fecha_pago__month=mes, pago__fecha_pago__year=anio, pago__estado='VALIDO'
-        )
+        fondo_obj = None
+        fondo_id = None
+        if fondo_param:
+            try:
+                fondo_id = int(fondo_param)
+                fondo_obj = Fondo.objects.filter(id=fondo_id).first()
+            except (ValueError, TypeError):
+                fondo_id = None
+                fondo_obj = None
 
-        if fondo_id:
-            detalles_mes = detalles_mes.filter(fondo_id=fondo_id)
-
-        totales_pagos = pagos_mes.aggregate(
-            total_recaudado=Sum('monto_total'),
-            total_capital=Sum('aplicacion_capital'),
-            total_interes=Sum('aplicacion_interes'),
-            total_mora=Sum('aplicacion_mora'),
-            interes_fondos=Sum('interes_fondos'),
-            interes_admin=Sum('interes_administracion'),
-            cantidad=Count('id')
-        )
-
-        # 2. Desembolsos del mes
-        movs_desembolso = MovimientoFondo.objects.filter(
-            tipo=MovimientoFondo.TipoMovimiento.DESEMBOLSO,
-            creado_en__month=mes,
-            creado_en__year=anio
-        )
-        if fondo_id:
-            movs_desembolso = movs_desembolso.filter(fondo_id=fondo_id)
-
-        total_desembolsado = movs_desembolso.aggregate(total=Sum('monto'))['total'] or Decimal('0.00')
-
-        # 3. Transacciones canceladas / anuladas en el mes
-        pagos_cancelados = Pago.objects.filter(fecha_pago__month=mes, fecha_pago__year=anio, estado='ANULADO')
-        totales_cancelados = pagos_cancelados.aggregate(
-            total_revertido=Sum('monto_total'),
-            capital_revertido=Sum('aplicacion_capital'),
-            interes_revertido=Sum('aplicacion_interes'),
-            cantidad=Count('id')
-        )
-        cancelados_lista = []
-        for p in pagos_cancelados.select_related('prestamo__cliente', 'anulado_por').order_by('-anulado_en', '-fecha_pago')[:100]:
-            cancelados_lista.append({
-                'pago_id': p.id,
-                'codigo_comprobante': p.codigo_comprobante,
-                'codigo_seguridad': p.codigo_seguridad,
-                'fecha_pago': str(p.fecha_pago),
-                'fecha_anulacion': str(p.anulado_en) if p.anulado_en else '',
-                'cliente': str(p.prestamo.cliente) if p.prestamo else 'Desconocido',
-                'prestamo_id': p.prestamo_id,
-                'monto_total': str(p.monto_total),
-                'aplicacion_capital': str(p.aplicacion_capital),
-                'aplicacion_interes': str(p.aplicacion_interes),
-                'motivo_anulacion': p.motivo_anulacion or '',
-                'anulado_por_nombre': p.anulado_por.nombre_completo if p.anulado_por else 'Administrador',
-            })
-
-        # 4. Datos del mes anterior para comparativa MoM
+        # Mes anterior para comparativa MoM
         if mes == 1:
             mes_ant = 12
             anio_ant = anio - 1
         else:
             mes_ant = mes - 1
             anio_ant = anio
-
-        pagos_ant = Pago.objects.filter(fecha_pago__month=mes_ant, fecha_pago__year=anio_ant, estado='VALIDO')
-        totales_ant = pagos_ant.aggregate(
-            total_recaudado=Sum('monto_total'),
-            total_capital=Sum('aplicacion_capital'),
-            total_interes=Sum('aplicacion_interes'),
-            total_mora=Sum('aplicacion_mora'),
-            interes_fondos=Sum('interes_fondos'),
-            interes_admin=Sum('interes_administracion'),
-            cantidad=Count('id')
-        )
-        desemb_ant = MovimientoFondo.objects.filter(
-            tipo=MovimientoFondo.TipoMovimiento.DESEMBOLSO,
-            creado_en__month=mes_ant,
-            creado_en__year=anio_ant
-        )
-        if fondo_id:
-            desemb_ant = desemb_ant.filter(fondo_id=fondo_id)
-        total_desemb_ant = desemb_ant.aggregate(total=Sum('monto'))['total'] or Decimal('0.00')
 
         def calc_variacion(val_actual, val_anterior):
             act = Decimal(str(val_actual or '0.00'))
@@ -521,26 +457,197 @@ class FondoViewSet(viewsets.ModelViewSet):
                 'porcentaje': str(pct),
             }
 
-        recaudado = totales_pagos['total_recaudado'] or Decimal('0.00')
-        recaudado_ant = totales_ant['total_recaudado'] or Decimal('0.00')
+        # 1. Transacciones vigentes del mes
+        detalles_mes = PagoFondoDetalle.objects.filter(
+            pago__fecha_pago__month=mes, pago__fecha_pago__year=anio, pago__estado='VALIDO'
+        )
+        if fondo_obj:
+            detalles_mes = detalles_mes.filter(fondo=fondo_obj)
 
-        comparativa = {
-            'mes_anterior': mes_ant,
-            'anio_anterior': anio_ant,
-            'total_recaudado': calc_variacion(recaudado, recaudado_ant),
-            'capital_retornado': calc_variacion(totales_pagos['total_capital'], totales_ant['total_capital']),
-            'interes_total': calc_variacion(totales_pagos['total_interes'], totales_ant['total_interes']),
-            'interes_fondos': calc_variacion(totales_pagos['interes_fondos'], totales_ant['interes_fondos']),
-            'interes_admin': calc_variacion(totales_pagos['interes_admin'], totales_ant['interes_admin']),
-            'mora_total': calc_variacion(totales_pagos['total_mora'], totales_ant['total_mora']),
-            'desembolsos_mes': calc_variacion(total_desembolsado, total_desemb_ant),
-            'cantidad_pagos': calc_variacion(totales_pagos['cantidad'], totales_ant['cantidad']),
-        }
+        # 2. Desembolsos del mes
+        movs_desembolso = MovimientoFondo.objects.filter(
+            tipo=MovimientoFondo.TipoMovimiento.DESEMBOLSO,
+            creado_en__month=mes,
+            creado_en__year=anio
+        )
+        if fondo_obj:
+            movs_desembolso = movs_desembolso.filter(fondo=fondo_obj)
+        total_desembolsado = movs_desembolso.aggregate(total=Sum('monto'))['total'] or Decimal('0.00')
+
+        desemb_ant_qs = MovimientoFondo.objects.filter(
+            tipo=MovimientoFondo.TipoMovimiento.DESEMBOLSO,
+            creado_en__month=mes_ant,
+            creado_en__year=anio_ant
+        )
+        if fondo_obj:
+            desemb_ant_qs = desemb_ant_qs.filter(fondo=fondo_obj)
+        total_desemb_ant = desemb_ant_qs.aggregate(total=Sum('monto'))['total'] or Decimal('0.00')
+
+        # 3. Transacciones canceladas en el mes
+        pagos_cancelados_qs = Pago.objects.filter(fecha_pago__month=mes, fecha_pago__year=anio, estado='ANULADO')
+        if fondo_obj:
+            pagos_cancelados_qs = pagos_cancelados_qs.filter(prestamo__fondos_detalle__fondo=fondo_obj).distinct()
+
+        cancelados_lista = []
+        total_revertido_cancelados = Decimal('0.00')
+        capital_revertido_cancelados = Decimal('0.00')
+        interes_revertido_cancelados = Decimal('0.00')
+
+        for p in pagos_cancelados_qs.select_related('prestamo__cliente', 'anulado_por').order_by('-anulado_en', '-fecha_pago')[:100]:
+            if fondo_obj:
+                pfd = p.prestamo.fondos_detalle.filter(fondo=fondo_obj).first()
+                pi = pfd.porcentaje_pi if pfd else Decimal('1.00')
+                cap_f = (p.aplicacion_capital * pi).quantize(Decimal('0.01'))
+                int_f = ((p.aplicacion_interes / 2) * pi).quantize(Decimal('0.01'))
+                tot_f = cap_f + int_f
+                total_revertido_cancelados += tot_f
+                capital_revertido_cancelados += cap_f
+                interes_revertido_cancelados += int_f
+                monto_mostrar = str(tot_f)
+                cap_mostrar = str(cap_f)
+                int_mostrar = str(int_f)
+            else:
+                total_revertido_cancelados += p.monto_total
+                capital_revertido_cancelados += p.aplicacion_capital
+                interes_revertido_cancelados += p.aplicacion_interes
+                monto_mostrar = str(p.monto_total)
+                cap_mostrar = str(p.aplicacion_capital)
+                int_mostrar = str(p.aplicacion_interes)
+
+            cancelados_lista.append({
+                'pago_id': p.id,
+                'codigo_comprobante': p.codigo_comprobante,
+                'codigo_seguridad': p.codigo_seguridad,
+                'fecha_pago': str(p.fecha_pago),
+                'fecha_anulacion': str(p.anulado_en) if p.anulado_en else '',
+                'cliente': str(p.prestamo.cliente) if p.prestamo else 'Desconocido',
+                'prestamo_id': p.prestamo_id,
+                'monto_total': monto_mostrar,
+                'aplicacion_capital': cap_mostrar,
+                'aplicacion_interes': int_mostrar,
+                'motivo_anulacion': p.motivo_anulacion or '',
+                'anulado_por_nombre': p.anulado_por.nombre_completo if p.anulado_por else 'Administrador',
+            })
+
+        # 4. CÃ¡lculo de MÃ©tricas y Comparativas segÃºn sea Bolsa Individual o Consolidado
+        if fondo_obj:
+            # MÃ‰TRICAS INDIVIDUALES DE LA BOLSA
+            cap_retornado = detalles_mes.aggregate(t=Sum('capital_reintegrado'))['t'] or Decimal('0.00')
+            gan_interes = detalles_mes.aggregate(t=Sum('ganancia'))['t'] or Decimal('0.00')
+            total_acreditado = cap_retornado + gan_interes
+            cantidad_abonos = detalles_mes.count()
+            flujo_neto = total_acreditado - total_desembolsado
+
+            # Mes anterior para la bolsa individual
+            detalles_ant = PagoFondoDetalle.objects.filter(
+                pago__fecha_pago__month=mes_ant, pago__fecha_pago__year=anio_ant, pago__estado='VALIDO', fondo=fondo_obj
+            )
+            cap_ret_ant = detalles_ant.aggregate(t=Sum('capital_reintegrado'))['t'] or Decimal('0.00')
+            gan_int_ant = detalles_ant.aggregate(t=Sum('ganancia'))['t'] or Decimal('0.00')
+            total_acreditado_ant = cap_ret_ant + gan_int_ant
+            cantidad_abonos_ant = detalles_ant.count()
+
+            resumen_data = {
+                'total_recaudado': str(total_acreditado),
+                'capital_retornado': str(cap_retornado),
+                'interes_total': str(gan_interes * 2),
+                'interes_fondos': str(gan_interes),
+                'interes_admin': str(gan_interes),
+                'mora_total': '0.00',
+                'desembolsos_mes': str(total_desembolsado),
+                'flujo_neto': str(flujo_neto),
+                'cantidad_pagos': cantidad_abonos,
+            }
+
+            comparativa = {
+                'mes_anterior': mes_ant,
+                'anio_anterior': anio_ant,
+                'total_recaudado': calc_variacion(total_acreditado, total_acreditado_ant),
+                'capital_retornado': calc_variacion(cap_retornado, cap_ret_ant),
+                'interes_total': calc_variacion(gan_interes * 2, gan_int_ant * 2),
+                'interes_fondos': calc_variacion(gan_interes, gan_int_ant),
+                'interes_admin': calc_variacion(gan_interes, gan_int_ant),
+                'mora_total': calc_variacion(Decimal('0.00'), Decimal('0.00')),
+                'desembolsos_mes': calc_variacion(total_desembolsado, total_desemb_ant),
+                'cantidad_pagos': calc_variacion(cantidad_abonos, cantidad_abonos_ant),
+            }
+
+            fondo_info = {
+                'id': fondo_obj.id,
+                'nombre': fondo_obj.nombre,
+                'familiar': fondo_obj.familiar,
+                'tipo_persona': getattr(fondo_obj, 'tipo_persona', 'NATURAL'),
+                'cedula_titular': getattr(fondo_obj, 'cedula_titular', '') or '',
+                'ruc': getattr(fondo_obj, 'ruc', '') or '',
+                'razon_social': getattr(fondo_obj, 'razon_social', '') or '',
+                'saldo_disponible': str(fondo_obj.saldo_disponible),
+                'ganancias_acumuladas': str(fondo_obj.ganancias_acumuladas),
+                'capital_inicial': str(fondo_obj.capital_inicial),
+                'total_desembolsado': str(getattr(fondo_obj, 'total_desembolsado', Decimal('0.00'))),
+            }
+        else:
+            # MÃ‰TRICAS CONSOLIDADAS GENERALES
+            pagos_mes = Pago.objects.filter(fecha_pago__month=mes, fecha_pago__year=anio, estado='VALIDO')
+            totales_pagos = pagos_mes.aggregate(
+                total_recaudado=Sum('monto_total'),
+                total_capital=Sum('aplicacion_capital'),
+                total_interes=Sum('aplicacion_interes'),
+                total_mora=Sum('aplicacion_mora'),
+                interes_fondos=Sum('interes_fondos'),
+                interes_admin=Sum('interes_administracion'),
+                cantidad=Count('id')
+            )
+            recaudado = totales_pagos['total_recaudado'] or Decimal('0.00')
+            capital_retornado = totales_pagos['total_capital'] or Decimal('0.00')
+            interes_total = totales_pagos['total_interes'] or Decimal('0.00')
+            interes_fondos = totales_pagos['interes_fondos'] or Decimal('0.00')
+            interes_admin = totales_pagos['interes_admin'] or Decimal('0.00')
+            mora_total = totales_pagos['total_mora'] or Decimal('0.00')
+            cantidad_pagos = totales_pagos['cantidad'] or 0
+            flujo_neto = recaudado - total_desembolsado
+
+            pagos_ant = Pago.objects.filter(fecha_pago__month=mes_ant, fecha_pago__year=anio_ant, estado='VALIDO')
+            totales_ant = pagos_ant.aggregate(
+                total_recaudado=Sum('monto_total'),
+                total_capital=Sum('aplicacion_capital'),
+                total_interes=Sum('aplicacion_interes'),
+                total_mora=Sum('aplicacion_mora'),
+                interes_fondos=Sum('interes_fondos'),
+                interes_admin=Sum('interes_administracion'),
+                cantidad=Count('id')
+            )
+            recaudado_ant = totales_ant['total_recaudado'] or Decimal('0.00')
+
+            resumen_data = {
+                'total_recaudado': str(recaudado),
+                'capital_retornado': str(capital_retornado),
+                'interes_total': str(interes_total),
+                'interes_fondos': str(interes_fondos),
+                'interes_admin': str(interes_admin),
+                'mora_total': str(mora_total),
+                'desembolsos_mes': str(total_desembolsado),
+                'flujo_neto': str(flujo_neto),
+                'cantidad_pagos': cantidad_pagos,
+            }
+
+            comparativa = {
+                'mes_anterior': mes_ant,
+                'anio_anterior': anio_ant,
+                'total_recaudado': calc_variacion(recaudado, recaudado_ant),
+                'capital_retornado': calc_variacion(capital_retornado, totales_ant['total_capital']),
+                'interes_total': calc_variacion(interes_total, totales_ant['total_interes']),
+                'interes_fondos': calc_variacion(interes_fondos, totales_ant['interes_fondos']),
+                'interes_admin': calc_variacion(interes_admin, totales_ant['interes_admin']),
+                'mora_total': calc_variacion(mora_total, totales_ant['total_mora']),
+                'desembolsos_mes': calc_variacion(total_desembolsado, total_desemb_ant),
+                'cantidad_pagos': calc_variacion(cantidad_pagos, totales_ant['cantidad']),
+            }
+            fondo_info = None
 
         # 5. Desglose por fondo familiar
         fondos = Fondo.objects.filter(activo=True)
-        if fondo_id:
-            fondos = fondos.filter(id=fondo_id)
+        if fondo_obj:
+            fondos = fondos.filter(id=fondo_obj.id)
 
         desglose_fondos = []
         for f in fondos:
@@ -552,8 +659,8 @@ class FondoViewSet(viewsets.ModelViewSet):
             desemb_f = movs_desembolso.filter(fondo=f).aggregate(total=Sum('monto'))['total'] or Decimal('0.00')
             cap_ret = dets['capital_reintegrado'] or Decimal('0.00')
             gan_int = dets['ganancia_interes'] or Decimal('0.00')
-            total_acreditado = cap_ret + gan_int
-            flujo_neto = total_acreditado - desemb_f
+            total_acreditado_f = cap_ret + gan_int
+            flujo_neto_f = total_acreditado_f - desemb_f
 
             desglose_fondos.append({
                 'fondo_id': f.id,
@@ -562,9 +669,9 @@ class FondoViewSet(viewsets.ModelViewSet):
                 'saldo_actual': str(f.saldo_disponible),
                 'capital_reintegrado': str(cap_ret),
                 'ganancia_interes': str(gan_int),
-                'total_acreditado': str(total_acreditado),
+                'total_acreditado': str(total_acreditado_f),
                 'desembolsos_mes': str(desemb_f),
-                'flujo_neto': str(flujo_neto),
+                'flujo_neto': str(flujo_neto_f),
                 'cantidad_abonos': dets['cantidad_abonos'] or 0,
             })
 
@@ -593,27 +700,18 @@ class FondoViewSet(viewsets.ModelViewSet):
         return Response({
             'mes': mes,
             'anio': anio,
-            'resumen': {
-                'total_recaudado': str(recaudado),
-                'capital_retornado': str(totales_pagos['total_capital'] or Decimal('0.00')),
-                'interes_total': str(totales_pagos['total_interes'] or Decimal('0.00')),
-                'interes_fondos': str(totales_pagos['interes_fondos'] or Decimal('0.00')),
-                'interes_admin': str(totales_pagos['interes_admin'] or Decimal('0.00')),
-                'mora_total': str(totales_pagos['total_mora'] or Decimal('0.00')),
-                'desembolsos_mes': str(total_desembolsado),
-                'flujo_neto': str(recaudado - total_desembolsado),
-                'cantidad_pagos': totales_pagos['cantidad'] or 0,
-            },
+            'resumen': resumen_data,
             'comparativa_mes_anterior': comparativa,
             'seccion_cancelados': {
-                'cantidad': totales_cancelados['cantidad'] or 0,
-                'total_revertido': str(totales_cancelados['total_revertido'] or Decimal('0.00')),
-                'capital_revertido': str(totales_cancelados['capital_revertido'] or Decimal('0.00')),
-                'interes_revertido': str(totales_cancelados['interes_revertido'] or Decimal('0.00')),
+                'cantidad': len(cancelados_lista),
+                'total_revertido': str(total_revertido_cancelados),
+                'capital_revertido': str(capital_revertido_cancelados),
+                'interes_revertido': str(interes_revertido_cancelados),
                 'transacciones_canceladas': cancelados_lista,
             },
             'desglose_fondos': desglose_fondos,
             'transacciones': pagos_lista,
+            'fondo_info': fondo_info,
         })
 
 
@@ -712,7 +810,7 @@ class PrestamoViewSet(viewsets.ModelViewSet):
                     monto=monto_aportado,
                     saldo_anterior=saldo_anterior,
                     saldo_posterior=fondo.saldo_disponible,
-                    descripcion=f'Desembolso préstamo #{prestamo.id}'
+                    descripcion=f'Desembolso prÃ©stamo #{prestamo.id}'
                 )
 
         registrar_auditoria(
@@ -728,7 +826,7 @@ class PrestamoViewSet(viewsets.ModelViewSet):
                 'plazo_meses': prestamo.plazo_meses,
                 'periodicidad': prestamo.periodicidad,
             },
-            observaciones=f"Creación y desembolso de préstamo #{prestamo.id} por C${prestamo.monto_principal:,.2f} a favor de {prestamo.cliente}.",
+            observaciones=f"CreaciÃ³n y desembolso de prÃ©stamo #{prestamo.id} por C${prestamo.monto_principal:,.2f} a favor de {prestamo.cliente}.",
             request=request
         )
 
@@ -737,14 +835,14 @@ class PrestamoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def amortizacion(self, request, pk=None):
-        """Proyección de cuotas con interés sobre saldo insoluto (Ley 176)."""
+        """ProyecciÃ³n de cuotas con interÃ©s sobre saldo insoluto (Ley 176)."""
         prestamo = self.get_object()
         validar_tasa(prestamo.tasa_interes)
         return Response(generar_proyeccion(prestamo))
 
     @action(detail=False, methods=['post'])
     def simular(self, request):
-        """Cuota estimada y tabla de amortización sin persistir el préstamo."""
+        """Cuota estimada y tabla de amortizaciÃ³n sin persistir el prÃ©stamo."""
         serializer = PrestamoSimulacionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -767,11 +865,11 @@ class PrestamoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def preview_pago(self, request, pk=None):
-        """Desglose de prelación (Art. 3180) del abono antes de confirmarlo.
+        """Desglose de prelaciÃ³n (Art. 3180) del abono antes de confirmarlo.
 
-        No escribe nada: la misma aritmética de `aplicar_pago` muestra en la
-        interfaz mora, interés, capital y nuevo saldo, incluyendo el bloqueo
-        por interés mínimo del ciclo vencido.
+        No escribe nada: la misma aritmÃ©tica de `aplicar_pago` muestra en la
+        interfaz mora, interÃ©s, capital y nuevo saldo, incluyendo el bloqueo
+        por interÃ©s mÃ­nimo del ciclo vencido.
         """
         prestamo = self.get_object()
         serializer = PagoPreviewSerializer(data=request.data)
@@ -783,7 +881,7 @@ class PrestamoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def pagos(self, request, pk=None):
-        """Asienta un cobro con imputación legal (Art. 3180 Código Civil)."""
+        """Asienta un cobro con imputaciÃ³n legal (Art. 3180 CÃ³digo Civil)."""
         prestamo = self.get_object()
         serializer = PagoImputacionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -811,7 +909,7 @@ class PrestamoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def pagare(self, request, pk=None):
-        """Descarga el pagaré legal en PDF (o HTML con `?formato=html`)."""
+        """Descarga el pagarÃ© legal en PDF (o HTML con `?formato=html`)."""
         prestamo = self.get_object()
         usuario = getattr(request.user, 'nombre_completo', '') or str(request.user)
 
@@ -838,23 +936,23 @@ class PrestamoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def cancelar(self, request, pk=None):
-        """Cancela y revierte un contrato de préstamo dentro de la ventana de tolerancia (72h)."""
+        """Cancela y revierte un contrato de prÃ©stamo dentro de la ventana de tolerancia (72h)."""
         prestamo = self.get_object()
 
         # 1. Permiso exclusivo para Administrador o Superusuario
         rol_usuario = getattr(request.user, 'rol', None)
         if rol_usuario != RolUsuario.ADMINISTRADOR and not getattr(request.user, 'is_superuser', False):
-            raise PermissionDenied('Solo usuarios con rol Administrador pueden cancelar contratos de préstamo.')
+            raise PermissionDenied('Solo usuarios con rol Administrador pueden cancelar contratos de prÃ©stamo.')
 
-        # 2. Validar que no esté ya cancelado
+        # 2. Validar que no estÃ© ya cancelado
         if prestamo.estado == Prestamo.Estado.CANCELADO:
-            raise serializers.ValidationError({'error': 'El contrato de préstamo ya se encuentra cancelado.'})
+            raise serializers.ValidationError({'error': 'El contrato de prÃ©stamo ya se encuentra cancelado.'})
 
-        # 3. Validar motivo obligatorio (mínimo 15 caracteres)
+        # 3. Validar motivo obligatorio (mÃ­nimo 15 caracteres)
         motivo = (request.data.get('motivo') or '').strip()
         if len(motivo) < 15:
             raise serializers.ValidationError({
-                'motivo': 'El motivo de cancelación es obligatorio y debe contener al menos 15 caracteres descriptivos.'
+                'motivo': 'El motivo de cancelaciÃ³n es obligatorio y debe contener al menos 15 caracteres descriptivos.'
             })
 
         # 4. Validar ventana de tolerancia
@@ -863,17 +961,17 @@ class PrestamoViewSet(viewsets.ModelViewSet):
         horas_transcurridas = (timezone.now() - prestamo.creado_en).total_seconds() / 3600.0
         if horas_transcurridas > limite_horas:
             raise serializers.ValidationError({
-                'error': f'Ha expirado la tolerancia máxima de {limite_horas} horas para cancelar este contrato (tiempo transcurrido: {int(horas_transcurridas)}h).'
+                'error': f'Ha expirado la tolerancia mÃ¡xima de {limite_horas} horas para cancelar este contrato (tiempo transcurrido: {int(horas_transcurridas)}h).'
             })
 
-        # 5. Validar que no tenga pagos válidos activos
+        # 5. Validar que no tenga pagos vÃ¡lidos activos
         pagos_activos = Pago.objects.filter(prestamo=prestamo, estado='VALIDO').count()
         if pagos_activos > 0:
             raise serializers.ValidationError({
                 'error': f'El contrato tiene {pagos_activos} recibo(s) de pago activo(s). Debe anularlos en caja previamente para poder rescindir el contrato.'
             })
 
-        # 6. Reversión atómica de fondos familiares y anulación
+        # 6. ReversiÃ³n atÃ³mica de fondos familiares y anulaciÃ³n
         reversiones = []
         with transaction.atomic():
             detalles_fondos = list(prestamo.fondos_detalle.select_related('fondo').all())
@@ -891,7 +989,7 @@ class PrestamoViewSet(viewsets.ModelViewSet):
                     monto=det.monto_aportado,
                     saldo_anterior=saldo_anterior,
                     saldo_posterior=fondo.saldo_disponible,
-                    descripcion=f"Reversión de desembolso por cancelación de contrato #{prestamo.id}. Motivo: {motivo}"
+                    descripcion=f"ReversiÃ³n de desembolso por cancelaciÃ³n de contrato #{prestamo.id}. Motivo: {motivo}"
                 )
                 reversiones.append({
                     'fondo_id': fondo.id,
@@ -904,7 +1002,7 @@ class PrestamoViewSet(viewsets.ModelViewSet):
             prestamo.saldo_insoluto = Decimal('0.00')
             prestamo.save(update_fields=['estado', 'saldo_insoluto', 'actualizado_en'])
 
-        # 7. Bitácora de auditoría inmutable
+        # 7. BitÃ¡cora de auditorÃ­a inmutable
         registrar_auditoria(
             modulo='PRESTAMOS',
             codigo_evento='PRESTAMO_CANCELADO',
@@ -923,12 +1021,12 @@ class PrestamoViewSet(viewsets.ModelViewSet):
                 'motivo': motivo,
                 'reversiones_fondos': reversiones,
             },
-            observaciones=f"Cancelación y rescisión de contrato de préstamo #{prestamo.id} ({prestamo.cliente}) dentro de ventana de tolerancia. Motivo: {motivo}",
+            observaciones=f"CancelaciÃ³n y rescisiÃ³n de contrato de prÃ©stamo #{prestamo.id} ({prestamo.cliente}) dentro de ventana de tolerancia. Motivo: {motivo}",
             request=request
         )
 
         return Response({
-            'mensaje': f'El contrato de préstamo #{prestamo.id} fue cancelado exitosamente y su capital restituido a los fondos.',
+            'mensaje': f'El contrato de prÃ©stamo #{prestamo.id} fue cancelado exitosamente y su capital restituido a los fondos.',
             'prestamo': PrestamoSerializer(prestamo).data
         }, status=status.HTTP_200_OK)
 
@@ -975,14 +1073,14 @@ class PagoViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'])
     def recibo_html(self, request, pk=None):
-        """Retorna el recibo de pago oficial en HTML formal listo para abrir en nueva pestaña e imprimir."""
+        """Retorna el recibo de pago oficial en HTML formal listo para abrir en nueva pestaÃ±a e imprimir."""
         pago = self.get_object()
         html = html_recibo(pago, request.user)
         return HttpResponse(html, content_type='text/html')
 
 
 class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
-    """Consulta de bitácora inmutable de auditoría y trazabilidad (Ley N° 977 UAF)."""
+    """Consulta de bitÃ¡cora inmutable de auditorÃ­a y trazabilidad (Ley NÂ° 977 UAF)."""
     queryset = BitacoraActividad.objects.select_related(
         'usuario', 'cliente', 'prestamo', 'pago', 'fondo', 'tipo_actividad'
     )
@@ -1092,7 +1190,7 @@ class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ConfiguracionViewSet(viewsets.ViewSet):
-    """Gestión de políticas y parámetros del sistema (solo ADMINISTRADOR)."""
+    """GestiÃ³n de polÃ­ticas y parÃ¡metros del sistema (solo ADMINISTRADOR)."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1141,14 +1239,14 @@ class ConfiguracionViewSet(viewsets.ViewSet):
             usuario=request.user,
             datos_anteriores=datos_anteriores,
             datos_nuevos=datos_nuevos,
-            observaciones="Actualización de parámetros operativos y políticas generales del sistema.",
+            observaciones="ActualizaciÃ³n de parÃ¡metros operativos y polÃ­ticas generales del sistema.",
             request=request
         )
         return Response(serializer.data)
 
 
 class CatalogoViewSet(viewsets.ViewSet):
-    """Catálogos maestros del sistema para formularios normalizados."""
+    """CatÃ¡logos maestros del sistema para formularios normalizados."""
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request):
@@ -1185,7 +1283,7 @@ class CatalogoViewSet(viewsets.ViewSet):
 
 
 class PermisoViewSet(viewsets.ViewSet):
-    """Gestión de matriz de permisos por rol (RBAC)."""
+    """GestiÃ³n de matriz de permisos por rol (RBAC)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request):
@@ -1250,7 +1348,7 @@ class PermisoViewSet(viewsets.ViewSet):
             usuario=request.user,
             datos_anteriores={'rol': rol, 'permiso': permiso.codigo, 'activo': estado_prev},
             datos_nuevos={'rol': rol, 'permiso': permiso.codigo, 'activo': bool(activo)},
-            observaciones=f"Modificación de política para {rol}: permiso '{permiso.nombre}' ({permiso.codigo}) {'concedido' if bool(activo) else 'revocado'}.",
+            observaciones=f"ModificaciÃ³n de polÃ­tica para {rol}: permiso '{permiso.nombre}' ({permiso.codigo}) {'concedido' if bool(activo) else 'revocado'}.",
             request=request
         )
 
@@ -1263,7 +1361,7 @@ class PermisoViewSet(viewsets.ViewSet):
 
 
 class SesionCajaViewSet(viewsets.ModelViewSet):
-    """Control formal de apertura, arqueo y cierre físico diario de caja."""
+    """Control formal de apertura, arqueo y cierre fÃ­sico diario de caja."""
     serializer_class = SesionCajaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1285,7 +1383,7 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         activa = SesionCaja.objects.filter(usuario=request.user, estado='ABIERTA').first()
         if activa:
             return Response(
-                {'detail': 'Ya tienes una sesión de caja abierta', 'sesion': SesionCajaSerializer(activa).data},
+                {'detail': 'Ya tienes una sesiÃ³n de caja abierta', 'sesion': SesionCajaSerializer(activa).data},
                 status=status.HTTP_400_BAD_REQUEST
             )
         saldo_inicial = Decimal(str(request.data.get('saldo_inicial_efectivo', '0.00')))
@@ -1302,7 +1400,7 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
     def cierre(self, request, pk=None):
         sesion = self.get_object()
         if sesion.estado != 'ABIERTA':
-            return Response({'detail': 'Esta sesión ya fue cerrada'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Esta sesiÃ³n ya fue cerrada'}, status=status.HTTP_400_BAD_REQUEST)
 
         efectivo_declarado = Decimal(str(request.data.get('efectivo_declarado', '0.00')))
         observaciones = request.data.get('observaciones', '')
